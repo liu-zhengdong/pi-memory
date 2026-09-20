@@ -9,6 +9,7 @@
     "notes"
   ],
   "files": [
+    "src",
     "dist",
     "examples/vault",
     "README.md",
@@ -20,7 +21,7 @@
   "types": "./dist/index.d.ts",
   "pi": {
     "extensions": [
-      "./dist/index.js"
+      "./src/index.ts"
     ]
   },
   "repository": {

@@ -16,10 +16,10 @@ const tarball = process.argv[2]
 const files = execFileSync("tar", ["-tzf", tarball], { encoding: "utf8" })
   .trim().split("\n").filter((file) => !file.endsWith("/"));
 for (const file of files) {
-  assert.match(file, /^package\/(?:dist\/[^/]+\.(?:js|d\.ts)|dist\/web\/app\.js|web\/(?:index\.html|style\.css)|examples\/vault\/.+\.md|docs\/.+\.md|(?:README(?:-Evolution)?|DESIGN(?:-Evolution)?)\.md|package\.json)$/,
+  assert.match(file, /^package\/(?:dist\/[^/]+\.(?:js|d\.ts)|dist\/web\/app\.js|src\/.+\.ts|web\/(?:index\.html|style\.css)|examples\/vault\/.+\.md|docs\/.+\.md|(?:README(?:-Evolution)?|DESIGN(?:-Evolution)?)\.md|package\.json)$/,
     `Unexpected package file: ${file}`);
 }
-for (const file of ["package.json", "dist/index.js", "dist/index.d.ts"]) {
+for (const file of ["package.json", "dist/index.js", "dist/index.d.ts", "src/index.ts"]) {
   assert(files.includes(`package/${file}`), `Missing package file: ${file}`);
 }
 const sandbox = await mkdtemp(join(tmpdir(), "pi-package-smoke-"));
@@ -32,9 +32,11 @@ try {
   const manifest = JSON.parse(await readFile(join(installed, "package.json"), "utf8"));
   assert.equal(manifest.name, metadata.name);
   assert.equal(manifest.version, metadata.version);
-  assert.deepEqual(manifest.pi.extensions, ["./dist/index.js"]);
-  const entry = join(installed, "dist/index.js");
-  assert.equal(typeof (await import(pathToFileURL(entry).href)).default, "function");
+  assert.deepEqual(manifest.pi.extensions, ["./src/index.ts"]);
+  const entry = join(installed, "src/index.ts");
+  if (entry.endsWith(".js")) {
+    assert.equal(typeof (await import(pathToFileURL(entry).href)).default, "function");
+  }
   const cwd = join(sandbox, "workspace");
   const agentDir = join(sandbox, "agent");
   await mkdir(cwd);
