@@ -119,17 +119,25 @@ test("user keywords affect same request; actual context dedup and no injected-co
   );
 });
 
-test("常驻指针已在上下文的笔记不重复提醒，其他深层记忆不受影响", () => {
+test("根层已注入的笔记不重复提醒，深层记忆照常提醒", () => {
   const f = fixture();
   f.reminders.configure(
     {
       directory: "/vault",
-      sources: [],
+      sources: [
+        {
+          kind: "global",
+          path: "/vault",
+          notes: [{ name: "a.md", path: "/vault/deep/a.md" }],
+          folders: [],
+          issues: [],
+          text: "# 记忆\n\n- a.md\n  路径：/vault/deep/a.md",
+          bytes: 64,
+        },
+      ],
       issues: [],
-      text: "# 常驻记忆\n\n- a.md\n  路径：/vault/deep/a.md",
+      text: "# 记忆\n\n- a.md\n  路径：/vault/deep/a.md",
       bytes: 64,
-      residentCount: 1,
-      residentPaths: ["/vault/deep/a.md"],
       reads: 0,
       cacheHits: 0,
     },
@@ -137,7 +145,7 @@ test("常驻指针已在上下文的笔记不重复提醒，其他深层记忆�
   );
   f.reminders.captureUser(user("alpha"));
   const first = f.context([user("alpha")]);
-  assert.equal(notes(first.messages).length, 0, "常驻条目不再追加一份提醒");
+  assert.equal(notes(first.messages).length, 0, "已注入的笔记不再追加一份提醒");
   f.reminders.captureUser(user("beta"));
   const second = f.context([user("alpha"), user("beta")]);
   assert.equal(notes(second.messages).length, 1);

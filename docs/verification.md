@@ -1,6 +1,20 @@
 # 验证记录
 
+## 去掉深层常驻机制（2026-10-01，issue #11）
+
+深层 `defaultopen` 不再登记常驻条目：它只表示「是否默认展开」，写在深层不生效，插件在索引诊断里提醒一次；深层记忆改由上层记忆的正文引用指向，AI 按路径读取。单篇默认展开全文的 8 KiB 提醒保留，只覆盖根层展开的正文。原始记录见各轮 `.artifacts/` 目录。
+
+- `npm run check`（tsc --noEmit）无输出通过；`npm test` 87 项全部通过、无跳过；`npm run test:install` 通过。
+- `npm run test:integration` 通过（9 个本地模型端请求）：出站请求里不再有 `# 常驻记忆` 块，深层 `defaultopen: true` 记忆的名称与正文都不出现；同一轮的 `/memory preview` 诊断里出现 `…/项目/深层/任务.md：defaultopen 只对根层记忆生效；深层记忆请由上层笔记的引用指向，本条未生效。` 记录：`.artifacts/integration-1790822841456/`。
+- `npm run test:keywords` 通过（18 个本地模型端请求）：`.artifacts/keywords-1790822843707/`。
+- `npm run test:tui` 通过：真实 TUI 里 `/memory preview` 滚动、关闭、窄屏均正常，状态栏不再有常驻计数。记录：`.artifacts/tui-1790822846960/`。
+- 真实库只读渲染（`/Users/liuzhengdong/Obsidian笔记`，7101 篇 md，当前代码）：索引 2.08 s，注入块 12,636 字节，根层 16 条，展开正文 2 篇（`USER.md` 6.4 KiB、`Web字体.md`），无 `# 常驻记忆` 块、无诊断项。8 KiB 提醒在该库不再触发：`USER.md` 拆到 6.4 KiB 后低于上限。
+
+未验证：深层 `defaultopen` 提醒与 8 KiB 提醒在真实 TUI 状态栏、通知里的显示只有单测与文本断言（`test/expanded.test.ts`、`test/limits.test.ts`、`test/ui.test.ts:34`）覆盖，没跑真实会话；`npm run test:live`（真实模型端）未跑；旧行为按设计不兼容，因此没有常驻条目的迁移实测。
+
 ## pi-memory 改造（2026-10-01）
+
+> 本节记录当时实现的深层常驻条目块；该机制已在上一节移除，以下数据保留为历史。
 
 把 pi-notes 改造成 pi-memory：命名统一、深层 `defaultopen: true` 变常驻条目块、上限与提醒、去掉 npm 发布。原始记录见各轮 `.artifacts/` 目录。
 

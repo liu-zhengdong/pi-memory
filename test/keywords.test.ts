@@ -116,8 +116,6 @@ test("cache includes non-keyword files; edits, deletion, new files and removed s
     text: "",
     bytes: 0,
     issues: [],
-    residentCount: 0,
-    residentPaths: [],
     reads: 0,
     cacheHits: 0,
   });
@@ -182,4 +180,21 @@ test("permission errors are excluded and reported; repair recovers", async (t) =
   }
   await refresh();
   assert.deepEqual(index.match("secret"), [path]);
+});
+
+test("深层 defaultopen 不生效：索引里提醒，缓存命中后仍然提醒", async (t) => {
+  const { deep, index, refresh } = await fixture(t);
+  await writeFile(
+    join(deep, "misused.md"),
+    "---\ndescription: 备份流程\ndefaultopen: true\n---\n",
+  );
+  await refresh();
+  assert.equal(index.issues.length, 1);
+  assert.match(index.issues[0], /defaultopen 只对根层记忆生效/);
+  assert.match(index.issues[0], /misused\.md/);
+  assert.deepEqual(index.match("备份"), []);
+  await refresh();
+  assert.equal(index.reads, 0);
+  assert.equal(index.cacheHits, 1);
+  assert.match(index.issues[0], /defaultopen 只对根层记忆生效/);
 });

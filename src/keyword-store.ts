@@ -114,8 +114,6 @@ export class KeywordStore {
       text: "",
       bytes: 0,
       issues: [],
-      residentCount: 0,
-      residentPaths: [],
       reads: 0,
       cacheHits: 0,
     });
@@ -305,8 +303,6 @@ export class KeywordStore {
         text: "",
         bytes: 0,
         issues: [],
-        residentCount: 0,
-        residentPaths: [],
         reads: 0,
         cacheHits: 0,
       },

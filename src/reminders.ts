@@ -111,13 +111,12 @@ export class Reminders {
   }
 
   configure(snapshot: Snapshot | undefined, limit: number): void {
-    // 根层默认条目与常驻指针都已在本轮上下文里，不再重复提醒。
-    this.roots = new Set([
-      ...(snapshot?.sources
+    // 根层默认条目已在本轮上下文里，不再重复提醒。
+    this.roots = new Set(
+      snapshot?.sources
         .filter((source) => source.text)
-        .flatMap((source) => source.notes.map((note) => note.path)) ?? []),
-      ...(snapshot?.residentPaths ?? []),
-    ]);
+        .flatMap((source) => source.notes.map((note) => note.path)) ?? [],
+    );
     this.defaultBytes = snapshot?.bytes ?? 0;
     this.limit = limit;
     this.provided = new Set(this.roots);
