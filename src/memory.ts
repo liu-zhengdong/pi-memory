@@ -204,8 +204,13 @@ export function resolveSources(
 const sourceTitle = (kind: SourceKind): string =>
   kind === "global" ? "# 记忆" : "# 项目记忆";
 
+/** 块首一句：说明这块内容是什么、该怎么用；正文未展开的按路径读取。 */
+const sourceIntro = (kind: SourceKind): string =>
+  `${kind === "global" ? "这些是跨会话保留的记忆" : "这些是当前项目保留的记忆"}：用作回答与判断的背景；正文未展开的，需要时按路径读取。`;
+
 function renderSource(
   source: Pick<SourceSnapshot, "notes" | "folders">,
+  kind: SourceKind,
 ): string {
   const parts: string[] = [];
   const full = source.notes.filter((note) => note.body !== undefined);
@@ -221,8 +226,8 @@ function renderSource(
         .join("\n"),
     );
   if (!source.notes.length && !source.folders.length)
-    parts.push("此目录暂无可提供的根记忆或子文件夹。");
-  return parts.join("\n\n");
+    return "此目录暂无可提供的根记忆或子文件夹。";
+  return [sourceIntro(kind), ...parts].join("\n\n");
 }
 
 /** /memory preview: injected blocks plus every excluded source with its reason. */
@@ -479,7 +484,7 @@ export class MemoryLoader {
           source.kind === "global" ? issue : `${source.path}/${issue}`,
         ),
       );
-      const text = `${sourceTitle(source.kind)}\n\n${renderSource(collected)}`;
+      const text = `${sourceTitle(source.kind)}\n\n${renderSource(collected, source.kind)}`;
       const cost = bytes(text);
       const separator = blocks.length ? 2 : 0;
       if (used + separator + cost > maxContextBytes) {

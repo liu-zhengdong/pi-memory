@@ -358,7 +358,16 @@ test("scan injects global first then project shallow to deep; reason-marked sour
     { kind: "project", path: deep },
   ]);
   assert.equal(result.sources.length, 4);
-  assert.ok(result.sources[0].text.startsWith("# 记忆"));
+  assert.ok(
+    result.sources[0].text.startsWith(
+      "# 记忆\n\n这些是跨会话保留的记忆：用作回答与判断的背景；正文未展开的，需要时按路径读取。\n\n",
+    ),
+  );
+  assert.ok(
+    result.sources[1].text.startsWith(
+      "# 项目记忆\n\n这些是当前项目保留的记忆：用作回答与判断的背景；正文未展开的，需要时按路径读取。\n\n",
+    ),
+  );
   assert.ok(
     result.text.indexOf("GLOBAL_BODY") < result.text.indexOf("SHALLOW_BODY"),
   );
