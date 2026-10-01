@@ -1,7 +1,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { KeywordIndex } from "../src/keywords.ts";
-import { NotesLoader } from "../src/notes.ts";
+import { MemoryLoader } from "../src/memory.ts";
 import { DEFAULT_MAX_CONTEXT_BYTES } from "../src/config.ts";
 
 const artifact = resolve(".artifacts", `keyword-benchmark-${Date.now()}`);
@@ -10,7 +10,7 @@ const raw = join(artifact, "raw");
 await mkdir(raw, { recursive: true });
 const measure = async (directory: string) => {
   const index = new KeywordIndex();
-  const loader = new NotesLoader();
+  const loader = new MemoryLoader();
   const config = { directory, maxContextBytes: DEFAULT_MAX_CONTEXT_BYTES };
   const rounds = [];
   for (const phase of ["cold", "warm"]) {

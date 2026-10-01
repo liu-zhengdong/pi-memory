@@ -20,12 +20,12 @@ import { test } from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
 import { KeywordStore } from "../src/keyword-store.ts";
 import { KeywordIndex } from "../src/keywords.ts";
-import { NotesLoader } from "../src/notes.ts";
+import { MemoryLoader } from "../src/memory.ts";
 
 const note = (key: string) =>
   `---\nkeywords: [${key}]\ndescription: SUMMARY_${key}\n---\nPRIVATE_BODY`;
 async function fixture(t: { after(fn: () => Promise<void>): void }) {
-  const dir = await mkdtemp(join(tmpdir(), "notes-store-"));
+  const dir = await mkdtemp(join(tmpdir(), "memory-store-"));
   const root = join(dir, "vault");
   const deep = join(root, "deep");
   const cache = join(dir, "cache");
@@ -39,7 +39,7 @@ async function fixture(t: { after(fn: () => Promise<void>): void }) {
     return s;
   };
   const snapshot = () =>
-    new NotesLoader().scan({ directory: root, maxContextBytes: 262144 });
+    new MemoryLoader().scan({ directory: root, maxContextBytes: 262144 });
   t.after(async () => {
     for (const s of stores) await s.close();
     await rm(dir, { recursive: true, force: true });
@@ -337,7 +337,7 @@ test("cache read and write errors survive successful indexing until the disk cac
   await rm(f.cache);
   await store.close(); // Successful atomic replacement repairs the rejected cache.
   const repaired = JSON.parse(await readFile(path, "utf8"));
-  assert.equal(repaired.version, 1);
+  assert.equal(repaired.version, 2);
   assert.equal(repaired.root, f.root);
   assert.ok(!JSON.stringify(repaired).includes("PRIVATE_BODY"));
   store.prepare(initial);

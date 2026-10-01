@@ -1,5 +1,20 @@
 # 验证记录
 
+## pi-memory 改造（2026-10-01）
+
+把 pi-notes 改造成 pi-memory：命名统一、深层 `defaultopen: true` 变常驻条目块、上限与提醒、去掉 npm 发布。原始记录见各轮 `.artifacts/` 目录。
+
+- `npm run check`（tsc --noEmit）无输出通过；`npm test` 89 项全部通过、无跳过。
+- `npm run test:install` 通过：直接从仓库根加载扩展，注册命令为 `memory`。
+- `npm run test:integration` 通过（8 个本地模型端请求）。出站请求 `.artifacts/integration-1790819809628/raw/request-1.json` 的 `messages[0].content`（3410 字符）里确有 `# 常驻记忆` 与深层记忆 `…/项目/深层/任务.md` 的绝对路径，该篇正文与另一篇深层正文均未出现；同一轮的 `/memory preview` 输出（`raw/preview.md` 第 23 行起）与注入块一致，也含常驻块。
+- `npm run test:keywords` 通过（18 个本地模型端请求）：常驻条目不再重复触发关键词提醒，fork 出的会话不携带常驻块。记录：`.artifacts/keywords-1790819810953/`。
+- `npm run test:tui` 通过：真实 TUI 里 `/memory preview` 可滚动、可关闭、窄屏不溢出；索引建好后重新打开预览，屏幕末尾出现 `# 常驻记忆` 与 `- 验收.md` 的绝对路径，状态栏为 `memory · 2 记忆 · 1 常驻/200`。记录：`.artifacts/tui-1790819814203/raw/08b-resident-preview.txt`。
+- 真实库只读渲染（`/Users/liuzhengdong/Obsidian笔记`，7101 篇 md）：构造索引 2.2 s，注入块 31.7 KiB，根层 16 条，深层常驻 0 条（该库尚无 `defaultopen: true` 的深层记忆）、关键词命中 0 条；8 KiB 提醒在该库真实触发一次：`USER.md：每轮注入全文 24.7 KiB，超过单篇常驻 8 KiB 上限；请拆分，或改为按需阅读。`记录：`.artifacts/residents-1790819517/vault-render.txt`。
+
+未验证：200 条常驻上限与 8 KiB 提醒在真实 TUI 状态栏、通知里的显示只有单测与文本断言覆盖，没跑真实会话；`npm run test:live`（真实模型端）未跑；旧名兼容按设计不做，因此没有 `notes.json` / `.note/` 迁移的实测。
+
+已知行为：冷启动后后台索引建好前，常驻条目与关键词提醒同源，此时预览和注入块都不含常驻块、状态栏也没有常驻计数（TUI 首轮预览即为此情形）；索引建好后两者一致。
+
 ## 两阶段诊断的告警去重
 
 准备阶段只更新状态，完整诊断才更新告警去重；过期的启动后台结果不再发布。新增 18 项扩展事件回归：关键词、监听、缓存及根层/深层混合故障从启动到连续两次发送各只通知一次；确认恢复后重现可再通知，终止性加载失败即时报告且去重；延迟的启动成功/失败不会覆盖修复、停用、无效配置或关闭会话后的状态；参数和菜单中的设置/停用命令会完整发布当前诊断，正确提示新错误并清除恢复标记。

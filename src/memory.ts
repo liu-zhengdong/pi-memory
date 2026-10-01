@@ -2,7 +2,8 @@ import { constants, type BigIntStats, type Dirent } from "node:fs";
 import { lstat, open, readdir, stat, type FileHandle } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { parseDocument } from "yaml";
-import { errorMessage, type NotesConfig } from "./config.ts";
+import { errorMessage, type MemoryConfig } from "./config.ts";
+import { planResidents, RESIDENT_ENTRY_LIMIT } from "./limits.ts";
 
 export const MAX_HEADER_BYTES = 64 * 1024;
 export interface Metadata {
@@ -50,6 +51,10 @@ export interface Snapshot {
   issues: string[];
   text: string;
   bytes: number;
+  /** 深层标记 defaultopen 的记忆条数；它们每轮只提供指针。 */
+  residentCount: number;
+  /** 本轮登记的常驻指针路径，与关键词提醒共用去重依据。 */
+  residentPaths: string[];
   reads: number;
   cacheHits: number;
 }
@@ -58,7 +63,7 @@ export interface DiscoveryResult {
   issues: string[];
 }
 
-export const UNTRUSTED_REASON = "项目未受 Pi 信任，未注入其中的笔记。";
+export const UNTRUSTED_REASON = "项目未受 Pi 信任，未注入其中的记忆。";
 
 /** undefined means that a bounded prefix needs more data. Offsets are JS string offsets. */
 export function headerBounds(
@@ -144,11 +149,11 @@ export function renderNote(note: Note): string {
 }
 
 /**
- * Locate `.note` directories from cwd up to the git root (or filesystem root).
+ * Locate `.memory` directories from cwd up to the git root (or filesystem root).
  * Returned shallow to deep; unreadable ancestors stop the ascent silently,
  * but an unreadable cwd is reported.
  */
-export async function discoverNoteDirectories(
+export async function discoverMemoryDirectories(
   cwd: string,
 ): Promise<DiscoveryResult> {
   const paths: string[] = [];
@@ -165,11 +170,11 @@ export async function discoverNoteDirectories(
     }
     const note = entries.find(
       (entry) =>
-        entry.name === ".note" &&
+        entry.name === ".memory" &&
         entry.isDirectory() &&
         !entry.isSymbolicLink(),
     );
-    if (note) paths.push(join(current, ".note"));
+    if (note) paths.push(join(current, ".memory"));
     if (entries.some((entry) => entry.name === ".git")) break;
     const parent = dirname(current);
     if (parent === current) break;
@@ -178,10 +183,10 @@ export async function discoverNoteDirectories(
   return { paths: paths.reverse(), issues };
 }
 
-/** Global first, project shallow to deep. A nested .note is not covered by a
+/** Global first, project shallow to deep. A nested .memory is not covered by a
  * global ancestor: hidden directories are excluded from ordinary discovery. */
 export function resolveSources(
-  config: NotesConfig,
+  config: MemoryConfig,
   discovery: DiscoveryResult,
   isTrusted: () => boolean,
 ): SourceRequest[] {
@@ -201,7 +206,7 @@ export function resolveSources(
 }
 
 const sourceTitle = (kind: SourceKind): string =>
-  kind === "global" ? "# 笔记" : "# 项目笔记";
+  kind === "global" ? "# 记忆" : "# 项目记忆";
 
 function renderSource(
   source: Pick<SourceSnapshot, "notes" | "folders">,
@@ -209,7 +214,7 @@ function renderSource(
   const parts: string[] = [];
   const full = source.notes.filter((note) => note.body !== undefined);
   const summaries = source.notes.filter((note) => note.body === undefined);
-  if (full.length) parts.push("## 已展开笔记", ...full.map(renderNote));
+  if (full.length) parts.push("## 已展开记忆", ...full.map(renderNote));
   if (summaries.length)
     parts.push("## 按需阅读", summaries.map(renderNote).join("\n\n"));
   if (source.folders.length)
@@ -220,21 +225,13 @@ function renderSource(
         .join("\n"),
     );
   if (!source.notes.length && !source.folders.length)
-    parts.push("此目录暂无可提供的根笔记或子文件夹。");
+    parts.push("此目录暂无可提供的根记忆或子文件夹。");
   return parts.join("\n\n");
 }
 
-/** Injected blocks only; excluded sources are never sent to the model. */
-export function formatSnapshot(snapshot: Snapshot): string {
-  return snapshot.sources
-    .filter((source) => source.text)
-    .map((source) => source.text)
-    .join("\n\n");
-}
-
-/** /notes preview: injected blocks plus every excluded source with its reason. */
+/** /memory preview: injected blocks plus every excluded source with its reason. */
 export function previewSnapshot(snapshot: Snapshot): string {
-  const injected = formatSnapshot(snapshot);
+  const injected = snapshot.text;
   const skipped = snapshot.sources.filter((source) => source.skipped);
   return [
     ...(injected ? [injected] : []),
@@ -287,7 +284,7 @@ async function readBody(
     throw new Error(
       `文件超过本轮 ${
         limit / 1024
-      } KiB 注入上限，请拆分笔记或调整 maxContextBytes`,
+      } KiB 注入上限，请拆分记忆或调整 maxContextBytes`,
     );
   const buffer = Buffer.alloc(Number(stat.size) + 1);
   let length = 0;
@@ -312,7 +309,7 @@ async function readBody(
 }
 
 /** Only root entries are discovered. Serialized cache payload is capped at twice the context budget. */
-export class NotesLoader {
+export class MemoryLoader {
   private cache = new Map<
     string,
     { signature: string; note: Note; bytes: number }
@@ -424,8 +421,9 @@ export class NotesLoader {
    * note bodies are injected and nothing is silently dropped.
    */
   async scan(
-    config: NotesConfig,
+    config: MemoryConfig,
     sources: SourceRequest[] = [],
+    openResidents: Note[] = [],
   ): Promise<Snapshot> {
     const { directory, maxContextBytes } = config;
     if (!sources.length)
@@ -438,6 +436,8 @@ export class NotesLoader {
       issues: [],
       text: "",
       bytes: 0,
+      residentCount: 0,
+      residentPaths: [],
       reads: 0,
       cacheHits: 0,
     };
@@ -492,7 +492,7 @@ export class NotesLoader {
       if (used + separator + cost > maxContextBytes) {
         const reason = `默认上下文超过 ${
           maxContextBytes / 1024
-        } KiB，该来源本轮未注入。请缩小目录、关闭部分 defaultopen，或调整 notes.json 的 maxContextBytes。`;
+        } KiB，该来源本轮未注入。请缩小目录、关闭部分 defaultopen，或调整 memory.json 的 maxContextBytes。`;
         snapshot.issues.push(`${source.path}：${reason}`);
         snapshot.sources.push({
           kind: source.kind,
@@ -518,6 +518,37 @@ export class NotesLoader {
         text,
         bytes: cost,
       });
+    }
+    // 深层标记 defaultopen 的记忆每轮只登记指针；上限与提醒由 limits.ts 判定。
+    const rootNotes = snapshot.sources
+      .filter((source) => source.text)
+      .flatMap((source) => source.notes);
+    const plan = planResidents(
+      openResidents.map((note) => note.name),
+      rootNotes
+        .filter((note) => note.body !== undefined)
+        .map((note) => ({ name: note.name, bytes: bytes(note.body!) })),
+    );
+    const residents = openResidents.slice(0, plan.take);
+    snapshot.residentCount = residents.length;
+    snapshot.residentPaths = residents.map((note) => note.path);
+    snapshot.issues.push(...plan.issues);
+    if (residents.length) {
+      const text = `# 常驻记忆\n\n以下记忆每轮提供，正文按路径按需读取。\n\n${residents
+        .map(renderNote)
+        .join("\n\n")}`;
+      const cost = bytes(text);
+      const separator = blocks.length ? 2 : 0;
+      if (used + separator + cost > maxContextBytes)
+        snapshot.issues.push(
+          `常驻记忆共 ${(cost / 1024).toFixed(1)} KiB，超过剩余默认上下文 ${
+            maxContextBytes / 1024
+          } KiB 预算，本轮未注入；请减少 defaultopen 条目或调整 memory.json 的 maxContextBytes。`,
+        );
+      else {
+        used += separator + cost;
+        blocks.push(text);
+      }
     }
     for (const [path, cached] of this.cache) {
       if (!seen.has(path)) {

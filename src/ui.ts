@@ -6,7 +6,7 @@ import {
   type Component,
   type KeybindingsManager,
 } from "@earendil-works/pi-tui";
-import { previewSnapshot, type Snapshot } from "./notes.ts";
+import { previewSnapshot, type Snapshot } from "./memory.ts";
 
 /** Terminal sanitization is display-only; model context retains the original note body. */
 export function terminalText(text: string): string {
@@ -27,12 +27,16 @@ export function summary(snapshot: Snapshot): string {
       count + source.notes.filter((note) => note.body !== undefined).length,
     0,
   );
-  const parts = [
-    `${full} 全文`,
-    `${notes - full} 按需`,
-    `${injected.reduce((count, source) => count + source.folders.length, 0)} 文件夹`,
+  const parts = [`${full} 全文`, `${notes - full} 按需`];
+  if (snapshot.residentCount)
+    parts.push(`${snapshot.residentCount} 常驻`);
+  parts.push(
+    `${injected.reduce(
+      (count, source) => count + source.folders.length,
+      0,
+    )} 文件夹`,
     `${(snapshot.bytes / 1024).toFixed(1)} KiB`,
-  ];
+  );
   if (snapshot.issues.length) parts.push(`${snapshot.issues.length} 项提醒`);
   const skipped = snapshot.sources.filter((source) => source.skipped).length;
   if (skipped) parts.push(`${skipped} 未注入`);
@@ -41,7 +45,7 @@ export function summary(snapshot: Snapshot): string {
 
 export function sourceLabel(snapshot: Snapshot): string {
   const global = snapshot.sources.find((source) => source.kind === "global");
-  return global?.path ?? "未设置全局目录（仅项目 .note）";
+  return global?.path ?? "未设置全局目录（仅项目 .memory）";
 }
 
 export function notify(
@@ -51,11 +55,11 @@ export function notify(
 ): void {
   const safe = terminalText(message);
   if (ctx.hasUI) ctx.ui.notify(safe, level);
-  else process.stderr.write(`[pi-notes] ${safe}\n`);
+  else process.stderr.write(`[pi-memory] ${safe}\n`);
 }
 
 /** Read-only, bounded-height source preview. Never adds a message to model history. */
-export class NotesPreview implements Component {
+export class MemoryPreview implements Component {
   private text: Text;
   private offset = 0;
   private pageSize = 1;
@@ -140,7 +144,7 @@ export async function showPreview(
     return;
   }
   await ctx.ui.custom<void>((tui, theme, keys, done) => {
-    const preview = new NotesPreview(
+    const preview = new MemoryPreview(
       text,
       summary(snapshot),
       theme,

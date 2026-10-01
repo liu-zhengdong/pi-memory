@@ -2,10 +2,12 @@ import { constants } from "node:fs";
 import { lstat, open, readdir, type FileHandle } from "node:fs/promises";
 import { basename, isAbsolute, join, relative, sep } from "node:path";
 import { errorMessage } from "./config.ts";
-import { readHeader, signature, type Note, type Snapshot } from "./notes.ts";
+import { readHeader, signature, type Note, type Snapshot } from "./memory.ts";
 
 export interface KeywordNote extends Note {
   keywords: string[];
+  /** 深层 `defaultopen: true`：每轮登记为常驻记忆，正文仍按需读取。 */
+  open?: true;
 }
 
 // Include negative lookups in the cache: most notes need no reminder.
@@ -26,6 +28,11 @@ export class KeywordIndex {
   cacheHits = 0;
   private cache = new Map<string, Cached>();
   private cacheBytes = 0;
+
+  /** 深层标记 defaultopen 的记忆；顺序随索引（按路径）。 */
+  get residents(): KeywordNote[] {
+    return [...this.notes.values()].filter((note) => note.open);
+  }
 
   clear(): void {
     this.notes.clear();
@@ -96,13 +103,14 @@ export class KeywordIndex {
           note.name !== basename(path) ||
           "body" in note ||
           !Array.isArray(note.keywords) ||
-          !note.keywords.length ||
           note.keywords.some(
             (word: unknown) =>
               typeof word !== "string" ||
               !word.trim() ||
               word !== word.trim().toLowerCase(),
           ) ||
+          (note.open !== undefined && note.open !== true) ||
+          (!note.keywords.length && note.open !== true) ||
           [note.description, note.purpose].some(
             (value) => value !== undefined && typeof value !== "string",
           ))
@@ -117,6 +125,7 @@ export class KeywordIndex {
           keywords: note.keywords,
           description: note.description,
           purpose: note.purpose,
+          open: note.open,
         },
       });
     }
@@ -232,13 +241,14 @@ export class KeywordIndex {
                   throw error;
                 },
               );
-              if (metadata.keywords?.length)
+              if (metadata.keywords?.length || metadata.defaultopen)
                 note = {
                   name: entry.name,
                   path,
-                  keywords: metadata.keywords,
+                  keywords: metadata.keywords ?? [],
                   description: metadata.description,
                   purpose: metadata.purpose,
+                  open: metadata.defaultopen ? true : undefined,
                 };
               if (
                 signature(before) !==
@@ -263,7 +273,7 @@ export class KeywordIndex {
         }
         if (entriesSeen > MAX_ENTRIES) {
           report(
-            `关键词索引达到 ${MAX_ENTRIES} 条目扫描上限；其余条目未索引。请缩小笔记目录。`,
+            `关键词索引达到 ${MAX_ENTRIES} 条目扫描上限；其余条目未索引。请缩小记忆目录。`,
           );
           break;
         }
@@ -273,7 +283,7 @@ export class KeywordIndex {
       }
     }
     if (omitted)
-      report(`关键词索引达到 16 MiB 上限，${omitted} 篇笔记未索引。`);
+      report(`关键词索引达到 16 MiB 上限，${omitted} 篇记忆未索引。`);
     if (issueCount > this.issues.length)
       this.issues.push(
         `另有 ${issueCount - this.issues.length} 项索引提醒未展开。`,

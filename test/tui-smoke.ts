@@ -17,7 +17,7 @@ await writeFile(
   join(agent, "settings.json"),
   JSON.stringify({ lastChangelogVersion: "0.85.1" }),
 );
-const socket = `pi-notes-${process.pid}`;
+const socket = `pi-memory-${process.pid}`;
 const quote = (value: string): string => `'${value.replaceAll("'", "'\\''")}'`;
 const tmux = (...args: string[]) => {
   const result = spawnSync("tmux", ["-L", socket, "-f", "/dev/null", ...args], {
@@ -30,16 +30,16 @@ const tmux = (...args: string[]) => {
 const pause = () => new Promise((done) => setTimeout(done, 180));
 async function waitFor(text: string): Promise<string> {
   for (let i = 0; i < 80; i++) {
-    const screen = tmux("capture-pane", "-p", "-t", "notes");
+    const screen = tmux("capture-pane", "-p", "-t", "memory");
     if (screen.includes(text)) return screen;
     await pause();
   }
-  const failed = tmux("capture-pane", "-p", "-t", "notes");
+  const failed = tmux("capture-pane", "-p", "-t", "memory");
   await writeFile(join(raw, "failure.txt"), `Expected: ${text}\n${failed}`);
   throw new Error(`TUI did not show ${text}\n${failed}`);
 }
-const key = (name: string) => tmux("send-keys", "-t", "notes", name);
-const type = (text: string) => tmux("send-keys", "-t", "notes", "-l", text);
+const key = (name: string) => tmux("send-keys", "-t", "memory", name);
+const type = (text: string) => tmux("send-keys", "-t", "memory", "-l", text);
 // Separate a preceding Escape from text so the terminal does not combine it into Alt+key.
 const command = async (text: string) => {
   await pause();
@@ -51,11 +51,11 @@ async function capture(name: string): Promise<void> {
   await pause();
   await writeFile(
     join(raw, `${name}.txt`),
-    tmux("capture-pane", "-p", "-t", "notes"),
+    tmux("capture-pane", "-p", "-t", "memory"),
   );
   await writeFile(
     join(raw, `${name}.ansi`),
-    tmux("capture-pane", "-p", "-e", "-t", "notes"),
+    tmux("capture-pane", "-p", "-e", "-t", "memory"),
   );
 }
 const args = [
@@ -63,7 +63,7 @@ const args = [
   `PI_CODING_AGENT_DIR=${agent}`,
   "PI_OFFLINE=1",
   "PI_TELEMETRY=0",
-  "NOTES_TEST_URL=http://127.0.0.1:9/v1",
+  "MEMORY_TEST_URL=http://127.0.0.1:9/v1",
   process.env.PI_TEST_BIN ?? "pi",
   "--no-session",
   "--no-approve",
@@ -76,7 +76,7 @@ const args = [
   "-e",
   join(repo, "test/fixture-provider.ts"),
   "--provider",
-  "notes-fixture",
+  "memory-fixture",
   "--model",
   "fixture",
 ];
@@ -85,7 +85,7 @@ try {
     "new-session",
     "-d",
     "-s",
-    "notes",
+    "memory",
     "-x",
     "100",
     "-y",
@@ -98,8 +98,8 @@ try {
   tmux("set-option", "-g", "extended-keys-format", "csi-u");
   await waitFor("0.0%/128k");
   await new Promise((done) => setTimeout(done, 600));
-  await command("/notes");
-  await waitFor("设置笔记目录");
+  await command("/memory");
+  await waitFor("设置记忆目录");
   await capture("01-empty");
   key("Enter");
   await waitFor("全局");
@@ -108,7 +108,7 @@ try {
   await waitFor("查看注入预览");
   await capture("03-menu");
   assert.equal(
-    JSON.parse(await readFile(join(agent, "notes.json"), "utf8")).directory,
+    JSON.parse(await readFile(join(agent, "memory.json"), "utf8")).directory,
     vault,
   );
   key("Enter");
@@ -116,7 +116,7 @@ try {
   await capture("04-preview");
   key("PageDown");
   await capture("05-preview-scrolled");
-  tmux("resize-window", "-t", "notes", "-x", "44", "-y", "24");
+  tmux("resize-window", "-t", "memory", "-x", "44", "-y", "24");
   await capture("06-narrow-preview");
   key("PageDown");
   await capture("07-narrow-scrolled");
@@ -124,39 +124,48 @@ try {
   await waitFor("查看注入预览");
   await capture("08-narrow-menu");
   key("Escape");
-  tmux("resize-window", "-t", "notes", "-x", "100", "-y", "40");
-  await command("/notes set /missing-pi-notes-test-folder");
+  tmux("resize-window", "-t", "memory", "-x", "100", "-y", "40");
+  // 后台索引建好后重新取快照：状态栏先出现常驻计数，预览末尾应出现常驻条目块。
+  await waitFor("1 常驻");
+  await command("/memory preview");
+  await waitFor("只读预览");
+  key("PageDown");
+  key("PageDown");
+  await waitFor("常驻记忆");
+  await capture("08b-resident-preview");
+  key("Escape");
+  await command("/memory set /missing-pi-memory-test-folder");
   await waitFor("ENOENT");
   await capture("09-invalid-path");
   assert.equal(
-    JSON.parse(await readFile(join(agent, "notes.json"), "utf8")).directory,
+    JSON.parse(await readFile(join(agent, "memory.json"), "utf8")).directory,
     vault,
   );
   await writeFile(
     join(vault, "USER.md"),
     '---\ndefaultopen: "false"\n---\nPRIVATE_BODY',
   );
-  await command("/notes preview");
+  await command("/memory preview");
   await waitFor("只读预览");
   await capture("10-malformed-preview");
   assert.ok(
-    !tmux("capture-pane", "-p", "-t", "notes").includes("PRIVATE_BODY"),
+    !tmux("capture-pane", "-p", "-t", "memory").includes("PRIVATE_BODY"),
   );
   key("Escape");
-  await command("/notes clear");
+  await command("/memory clear");
   await waitFor("已停用默认注入");
   await capture("11-disabled");
   assert.equal(
-    JSON.parse(await readFile(join(agent, "notes.json"), "utf8")).directory,
+    JSON.parse(await readFile(join(agent, "memory.json"), "utf8")).directory,
     null,
   );
   // A moved/missing folder must not make the UI's configuration action unreachable.
   await writeFile(
-    join(agent, "notes.json"),
-    JSON.stringify({ directory: "/missing-pi-notes-test-folder" }),
+    join(agent, "memory.json"),
+    JSON.stringify({ directory: "/missing-pi-memory-test-folder" }),
   );
-  await command("/notes");
-  await waitFor("设置笔记目录");
+  await command("/memory");
+  await waitFor("设置记忆目录");
   await capture("12-recovery-menu");
   key("Escape");
   await writeFile(

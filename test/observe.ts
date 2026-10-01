@@ -3,8 +3,8 @@ import { join } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 export default function observe(pi: ExtensionAPI): void {
-  const directory = process.env.NOTES_OBSERVE_DIR;
-  if (!directory) throw new Error("NOTES_OBSERVE_DIR is required");
+  const directory = process.env.MEMORY_OBSERVE_DIR;
+  if (!directory) throw new Error("MEMORY_OBSERVE_DIR is required");
   let requests = 0;
   pi.on("before_provider_request", (event, ctx) => {
     if (++requests > 8) {

@@ -4,12 +4,12 @@ import type {
   SessionEntry,
 } from "@earendil-works/pi-coding-agent";
 import { KeywordIndex } from "./keywords.ts";
-import { renderNote, type Snapshot } from "./notes.ts";
+import { renderNote, type Snapshot } from "./memory.ts";
 
 type Message = ContextEvent["messages"][number];
 type Reminder = Extract<Message, { role: "custom" }>;
-export const REMINDER_TYPE = "pi-notes-keyword";
-export const JOURNAL_TYPE = "pi-notes-keyword-state";
+export const REMINDER_TYPE = "pi-memory-keyword";
+export const JOURNAL_TYPE = "pi-memory-keyword-state";
 interface Change {
   version: 1;
   action: "hit" | "settle";
@@ -111,11 +111,13 @@ export class Reminders {
   }
 
   configure(snapshot: Snapshot | undefined, limit: number): void {
-    this.roots = new Set(
-      snapshot?.sources
+    // 根层默认条目与常驻指针都已在本轮上下文里，不再重复提醒。
+    this.roots = new Set([
+      ...(snapshot?.sources
         .filter((source) => source.text)
-        .flatMap((source) => source.notes.map((note) => note.path)) ?? [],
-    );
+        .flatMap((source) => source.notes.map((note) => note.path)) ?? []),
+      ...(snapshot?.residentPaths ?? []),
+    ]);
     this.defaultBytes = snapshot?.bytes ?? 0;
     this.limit = limit;
     this.provided = new Set(this.roots);
@@ -202,7 +204,7 @@ export class Reminders {
     ): Reminder | undefined => {
       const note = this.index.notes.get(data.path);
       if (!note || included.has(data.path)) return;
-      const content = `# 相关笔记\n\n${renderNote(
+      const content = `# 相关记忆\n\n${renderNote(
         note,
       )}\n\n需要时可按路径读取全文。`;
       const cost = Buffer.byteLength(content) + 2;

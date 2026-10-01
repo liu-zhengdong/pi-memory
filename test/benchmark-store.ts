@@ -5,7 +5,7 @@ import { join, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { KeywordStore } from "../src/keyword-store.ts";
-import { NotesLoader } from "../src/notes.ts";
+import { MemoryLoader } from "../src/memory.ts";
 
 const repo = fileURLToPath(new URL("..", import.meta.url));
 const artifact = join(repo, ".artifacts", `store-${Date.now()}`);
@@ -44,7 +44,7 @@ if (!process.argv[2]) {
     );
 }
 const config = { directory: root, maxContextBytes: 262144 };
-const loader = new NotesLoader();
+const loader = new MemoryLoader();
 const rows = [];
 for (const phase of ["cold", "restarted-with-disk-cache"]) {
   const store = new KeywordStore(cache);

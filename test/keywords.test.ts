@@ -13,11 +13,11 @@ import { test } from "node:test";
 import { KeywordIndex } from "../src/keywords.ts";
 import { DEFAULT_MAX_CONTEXT_BYTES } from "../src/config.ts";
 import {
-  discoverNoteDirectories,
-  NotesLoader,
+  discoverMemoryDirectories,
+  MemoryLoader,
   parseMetadata,
   resolveSources,
-} from "../src/notes.ts";
+} from "../src/memory.ts";
 
 for (const invalid of [
   "word",
@@ -50,7 +50,7 @@ async function fixture(t: { after: (fn: () => Promise<void>) => void }) {
     directory: join(directory, "vault"),
     maxContextBytes: DEFAULT_MAX_CONTEXT_BYTES,
   };
-  const loader = new NotesLoader();
+  const loader = new MemoryLoader();
   const index = new KeywordIndex();
   return {
     directory,
@@ -116,6 +116,8 @@ test("cache includes non-keyword files; edits, deletion, new files and removed s
     text: "",
     bytes: 0,
     issues: [],
+    residentCount: 0,
+    residentPaths: [],
     reads: 0,
     cacheHits: 0,
   });
@@ -125,15 +127,15 @@ test("cache includes non-keyword files; edits, deletion, new files and removed s
 test("project .note deep entries are indexed only from trusted selected sources, including inside a global ancestor", async (t) => {
   const { directory, config, index } = await fixture(t);
   const project = join(config.directory, "project");
-  const noteDir = join(project, ".note");
+  const noteDir = join(project, ".memory");
   await mkdir(join(noteDir, "deep"), { recursive: true });
   await mkdir(join(project, ".git"));
   const path = join(noteDir, "deep", "project.md");
   await writeFile(path, "---\nkeywords: [project-key]\n---\nNOT_AUTOREAD");
-  const discovery = await discoverNoteDirectories(project);
+  const discovery = await discoverMemoryDirectories(project);
   assert.deepEqual(discovery.paths, [noteDir]);
   for (const trusted of [false, true]) {
-    const snapshot = await new NotesLoader().scan(
+    const snapshot = await new MemoryLoader().scan(
       config,
       resolveSources(config, discovery, () => trusted),
     );
@@ -141,7 +143,7 @@ test("project .note deep entries are indexed only from trusted selected sources,
     assert.deepEqual(index.match("project-key"), trusted ? [path] : []);
   }
   assert.equal(index.notes.size, 1);
-  assert.ok(!directory.endsWith(".note"));
+  assert.ok(!directory.endsWith(".memory"));
 });
 
 test("malformed metadata is cached, diagnostics are bounded, repairs refresh", async (t) => {
