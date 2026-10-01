@@ -2,10 +2,10 @@ import assert from "node:assert/strict";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { NotesLoader } from "../src/notes.ts";
+import { MemoryLoader } from "../src/memory.ts";
 import { DEFAULT_MAX_CONTEXT_BYTES } from "../src/config.ts";
 
-const root = await mkdtemp(join(tmpdir(), "pi-notes-scale-"));
+const root = await mkdtemp(join(tmpdir(), "pi-memory-scale-"));
 const nested = join(root, "archive");
 const rootNotes = 1000;
 const nestedNotes = 10000;
@@ -30,7 +30,7 @@ try {
       ),
     );
   }
-  const loader = new NotesLoader();
+  const loader = new MemoryLoader();
   const config = {
     directory: root,
     maxContextBytes: DEFAULT_MAX_CONTEXT_BYTES,

@@ -14,7 +14,7 @@ const work = join(artifact, "work");
 const agentDir = join(work, "agent");
 const vault = join(work, "vault");
 const project = join(work, "project");
-const projectNotes = join(project, ".note");
+const projectNotes = join(project, ".memory");
 for (const path of [
   raw,
   agentDir,
@@ -40,8 +40,10 @@ await writeFile(
   join(raw, "source-hashes.json"),
   JSON.stringify(before, null, 2),
 );
+// 深层关键词记忆保持 defaultopen: false：defaultopen: true 已改为常驻条目机制，
+// 常驻条目每轮都在上下文里，不再参与本文件要验收的关键词提醒路径。
 const note = (key: string, summary: string) =>
-  `---\nkeywords: [${key}]\ndescription: ${summary}\npurpose: Reference for ${key}\ndefaultopen: true\n---\nPRIVATE_${summary}\n`;
+  `---\nkeywords: [${key}]\ndescription: ${summary}\npurpose: Reference for ${key}\ndefaultopen: false\n---\nPRIVATE_${summary}\n`;
 await writeFile(
   join(vault, "root.md"),
   "---\nkeywords: [root-key]\ndescription: ROOT_GUIDE\n---\nPRIVATE_ROOT\n",
@@ -80,7 +82,7 @@ await writeFile(
   }),
 );
 await writeFile(
-  join(agentDir, "notes.json"),
+  join(agentDir, "memory.json"),
   JSON.stringify({ directory: vault }),
 );
 const requests: any[] = [];
@@ -165,8 +167,8 @@ const env = {
   PI_CODING_AGENT_DIR: agentDir,
   PI_OFFLINE: "1",
   PI_TELEMETRY: "0",
-  NOTES_TEST_TRUST: "yes",
-  NOTES_TEST_URL: `http://127.0.0.1:${address.port}/v1`,
+  MEMORY_TEST_TRUST: "yes",
+  MEMORY_TEST_URL: `http://127.0.0.1:${address.port}/v1`,
 };
 const args = [
   "--approve",
@@ -179,7 +181,7 @@ const args = [
   "-e",
   join(repo, "test/keyword-fixture.ts"),
   "--provider",
-  "notes-fixture",
+  "memory-fixture",
   "--model",
   "fixture",
   "--tools",
@@ -293,7 +295,7 @@ try {
   assert.equal(count("HINT_USER"), 1);
   // A lower budget filters retained reminders as well as new ones; pending can recover.
   await writeFile(
-    join(agentDir, "notes.json"),
+    join(agentDir, "memory.json"),
     JSON.stringify({ directory: vault, maxContextBytes: 1024 }),
   );
   await rpc.prompt("thought-key reply-key final-key");
@@ -304,7 +306,7 @@ try {
     ),
   );
   await writeFile(
-    join(agentDir, "notes.json"),
+    join(agentDir, "memory.json"),
     JSON.stringify({ directory: vault }),
   );
   await rpc.prompt("room is available again");
@@ -317,7 +319,7 @@ try {
   ])
     assert.equal(count(marker), 1, `budget recovery ${marker}`);
   await writeFile(
-    join(agentDir, "notes.json"),
+    join(agentDir, "memory.json"),
     JSON.stringify({ directory: null }),
   );
   await rpc.prompt("user-key project-key");
@@ -351,12 +353,12 @@ try {
   assert.ok(!rpc.events.some((event) => event.type === "extension_error"));
   // Select the assistant itself, excluding its descendant hit checkpoint.
   await writeFile(
-    join(agentDir, "notes.json"),
+    join(agentDir, "memory.json"),
     JSON.stringify({ directory: vault }),
   );
   await rpc.close();
   rpc = new Rpc([...args, "--session", state.sessionFile], project, env, raw);
-  await rpc.request("prompt", { message: "/notes-test-origin" });
+  await rpc.request("prompt", { message: "/memory-test-origin" });
   await rpc.prompt("continue from the chosen assistant");
   assert.equal(
     count("HINT_FINAL"),
@@ -412,12 +414,12 @@ try {
   hold = false;
   const branchText = await readFile(midrunSession, "utf8");
   assert.ok(
-    branchText.includes('"customType":"pi-notes-keyword"') &&
+    branchText.includes('"customType":"pi-memory-keyword"') &&
       branchText.includes("HINT_MIDRUN"),
   );
   rpc = new Rpc([...args, "--session", midrunSession], project, env, raw);
-  await rpc.request("prompt", { message: "/notes-test-boundary" });
-  await rpc.request("compact", { customInstructions: "notes-test-drop-all" });
+  await rpc.request("prompt", { message: "/memory-test-boundary" });
+  await rpc.request("compact", { customInstructions: "memory-test-drop-all" });
   await rpc.prompt("continue after summarizing interrupted work");
   assert.equal(
     count("HINT_MIDRUN"),

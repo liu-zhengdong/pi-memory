@@ -6,7 +6,7 @@ import {
   TUI_KEYBINDINGS,
   visibleWidth,
 } from "@earendil-works/pi-tui";
-import { NotesPreview, terminalText } from "../src/ui.ts";
+import { MemoryPreview, summary, terminalText } from "../src/ui.ts";
 
 initTheme("dark");
 // Identity colors isolate wrapping from the terminal's color capability detection.
@@ -16,13 +16,43 @@ const theme = {
 } as Theme;
 const keys = new KeybindingsManager(TUI_KEYBINDINGS);
 
+test("summary 报告常驻条数与提醒项", () => {
+  const snapshot = {
+    directory: "/vault",
+    sources: [
+      {
+        kind: "global",
+        path: "/vault",
+        notes: [{ name: "a.md", path: "/vault/a.md" }],
+        folders: [],
+        issues: [],
+        text: "# 记忆",
+        bytes: 10,
+      },
+    ],
+    issues: [
+      "USER.md：每轮注入全文 24.7 KiB，超过单篇常驻 8 KiB 上限；请拆分，或改为按需阅读。",
+    ],
+    text: "# 记忆\n\n# 常驻记忆",
+    bytes: 31701,
+    residentCount: 2,
+    residentPaths: ["/vault/deep/a.md"],
+    reads: 1,
+    cacheHits: 0,
+  } as unknown as Parameters<typeof summary>[0];
+  assert.equal(
+    summary(snapshot),
+    "0 全文 · 1 按需 · 2 常驻 · 0 文件夹 · 31.0 KiB · 1 项提醒",
+  );
+});
+
 test("preview fits narrow and normal widths, scrolls, closes and sanitizes terminal controls", () => {
   let closed = false;
   const text = Array.from(
     { length: 100 },
     (_, i) => `第${i}行 用户偏好 ${"long/path/".repeat(8)}`,
   ).join("\n");
-  const preview = new NotesPreview(
+  const preview = new MemoryPreview(
     text,
     "1 全文 · 2 按需",
     theme,

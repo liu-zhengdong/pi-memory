@@ -13,8 +13,8 @@ const original =
 const settings = JSON.parse(
   await readFile(join(original, "settings.json"), "utf8"),
 );
-const provider = process.env.NOTES_TEST_PROVIDER ?? settings.defaultProvider;
-const model = process.env.NOTES_TEST_MODEL ?? settings.defaultModel;
+const provider = process.env.MEMORY_TEST_PROVIDER ?? settings.defaultProvider;
+const model = process.env.MEMORY_TEST_MODEL ?? settings.defaultModel;
 const auth = JSON.parse(await readFile(join(original, "auth.json"), "utf8"));
 assert.ok(
   typeof provider === "string" && typeof model === "string" && auth[provider],
@@ -37,7 +37,7 @@ if (keywords) {
   await mkdir(join(vault, "关键词"));
   await writeFile(
     join(vault, "关键词", "验收.md"),
-    "---\nkeywords: [笔记关键词验收]\ndescription: KEYWORD_LIVE_HINT：此笔记保存当前验收口令，需读取全文确认。\n---\n验收口令：BRAVO-927\n",
+    "---\nkeywords: [记忆关键词验收]\ndescription: KEYWORD_LIVE_HINT：此笔记保存当前验收口令，需读取全文确认。\n---\n验收口令：BRAVO-927\n",
   );
   await writeFile(
     join(vault, "关键词", "后续.md"),
@@ -88,7 +88,7 @@ await writeFile(
   }),
 );
 await writeFile(
-  join(agentDir, "notes.json"),
+  join(agentDir, "memory.json"),
   JSON.stringify({ directory: vault }),
 );
 console.log(
@@ -121,7 +121,7 @@ const rpc = new Rpc(
     PI_CODING_AGENT_DIR: agentDir,
     PI_OFFLINE: "1",
     PI_TELEMETRY: "0",
-    NOTES_OBSERVE_DIR: raw,
+    MEMORY_OBSERVE_DIR: raw,
   },
   raw,
 );
@@ -130,18 +130,18 @@ try {
   assert.equal(state.model.provider, provider);
   assert.equal(state.model.id, model);
   const start = rpc.events.length;
-  await rpc.request("prompt", { message: "/notes preview" });
+  await rpc.request("prompt", { message: "/memory preview" });
   const preview = rpc.events
     .slice(start)
     .find(
       (event) =>
-        event.method === "notify" && event.message.startsWith("# 笔记"),
+        event.method === "notify" && event.message.startsWith("# 记忆"),
     )?.message;
   assert.ok(preview && !preview.includes("ALPHA-731"));
   await writeFile(join(raw, "preview.md"), preview);
   await rpc.prompt(
     keywords
-      ? "笔记关键词验收。若收到相关笔记提示，请直接按提示中的路径读取正文，不要列目录或搜索；仅回答验收口令与来源路径。"
+      ? "记忆关键词验收。若收到相关笔记提示，请直接按提示中的路径读取正文，不要列目录或搜索；仅回答验收口令与来源路径。"
       : "请从笔记目录的文件夹入口查找 Alpha 的验收口令；先逐层列目录定位文件，再读取原文。仅回答口令与来源路径。",
     150000,
   );
@@ -190,7 +190,7 @@ try {
               typeof part.text === "string" ? [part.text] : [],
             ),
       )
-      .filter((text: string) => text.startsWith("# 相关笔记\n"))
+      .filter((text: string) => text.startsWith("# 相关记忆\n"))
       .join("\n");
     assert.equal(reminderText.split("KEYWORD_FOLLOWUP_HINT").length - 1, 1);
     assert.equal(reminderText.split("KEYWORD_LIVE_HINT").length - 1, 1);

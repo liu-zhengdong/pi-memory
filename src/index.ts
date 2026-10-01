@@ -6,19 +6,20 @@ import {
   type ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
 import {
-  defaultNotesDirectory,
+  defaultMemoryDirectory,
   errorMessage,
   loadConfig,
   saveDirectory,
   validateDirectory,
 } from "./config.ts";
 import {
-  discoverNoteDirectories,
-  NotesLoader,
+  discoverMemoryDirectories,
+  MemoryLoader,
   resolveSources,
   type Snapshot,
-} from "./notes.ts";
+} from "./memory.ts";
 import { KeywordStore } from "./keyword-store.ts";
+import { RESIDENT_ENTRY_LIMIT } from "./limits.ts";
 import { JOURNAL_TYPE, Reminders } from "./reminders.ts";
 import {
   notify,
@@ -29,24 +30,24 @@ import {
 } from "./ui.ts";
 
 const HELP =
-  "/notes — 查看目录与注入清单\n/notes set <目录> — 设置全局笔记目录（支持空格与 ~）\n/notes preview — 预览默认上下文\n/notes clear — 停用默认注入，不删除笔记\n未配置时使用 agent 目录下的 notes/（若存在）；受信任项目内的 .note 目录会自动注入；/notes preview 可确认";
+  "/memory — 查看目录与注入清单\n/memory set <目录> — 设置全局记忆目录（支持空格与 ~）\n/memory preview — 预览默认上下文\n/memory clear — 停用默认注入，不删除记忆文件\n未配置时使用 agent 目录下的 memory/（若存在）；受信任项目内的 .memory 目录会自动注入；/memory preview 可确认";
 
 function globalProblem(snapshot: Snapshot): string | undefined {
   const global = snapshot.sources.find((source) => source.kind === "global");
   return global?.skipped;
 }
 
-function injectedNotes(snapshot: Snapshot): number {
+function injectedMemories(snapshot: Snapshot): number {
   return snapshot.sources.reduce(
     (count, source) => count + (source.text ? source.notes.length : 0),
     0,
   );
 }
 
-export default function notesExtension(pi: ExtensionAPI): void {
-  const configPath = join(getAgentDir(), "notes.json");
-  const loader = new NotesLoader();
-  const store = new KeywordStore(join(getAgentDir(), "cache", "pi-notes"));
+export default function memoryExtension(pi: ExtensionAPI): void {
+  const configPath = join(getAgentDir(), "memory.json");
+  const loader = new MemoryLoader();
+  const store = new KeywordStore(join(getAgentDir(), "cache", "pi-memory"));
   const index = store.index;
   let requestSnapshot: Snapshot | undefined;
   let publishPending = false;
@@ -65,13 +66,17 @@ export default function notesExtension(pi: ExtensionAPI): void {
   ): void {
     if (ctx.hasUI) {
       ctx.ui.setStatus(
-        "pi-notes",
+        "pi-memory",
         failure
-          ? "notes · 异常"
+          ? "memory · 异常"
           : snapshot
-          ? `notes · ${injectedNotes(snapshot)} 笔记${
-              store.pending ? " · 索引准备中" : ""
-            }${snapshot.issues.length || previousWarning ? " · !" : ""}`
+          ? `memory · ${injectedMemories(snapshot)} 记忆${
+              snapshot.residentCount
+                ? ` · ${snapshot.residentCount} 常驻/${RESIDENT_ENTRY_LIMIT}`
+                : ""
+            }${store.pending ? " · 索引准备中" : ""}${
+              snapshot.issues.length || previousWarning ? " · !" : ""
+            }`
           : undefined,
       );
     }
@@ -90,7 +95,7 @@ export default function notesExtension(pi: ExtensionAPI): void {
         ctx,
         lines.slice(0, 3).join("\n") +
           (lines.length > 3
-            ? `\n另有 ${lines.length - 3} 项；/notes preview 查看。`
+            ? `\n另有 ${lines.length - 3} 项；/memory preview 查看。`
             : ""),
         "warning",
       );
@@ -105,7 +110,7 @@ export default function notesExtension(pi: ExtensionAPI): void {
     snapshotRevision++;
     const config = await loadConfig(configPath);
     contextLimit = config.maxContextBytes;
-    const discovery = await discoverNoteDirectories(ctx.cwd);
+    const discovery = await discoverMemoryDirectories(ctx.cwd);
     const sources = resolveSources(config, discovery, () =>
       ctx.isProjectTrusted(),
     );
@@ -115,7 +120,7 @@ export default function notesExtension(pi: ExtensionAPI): void {
       report(ctx);
       return;
     }
-    const result = await loader.scan(config, sources);
+    const result = await loader.scan(config, sources, index.residents);
     store.prepare(result);
     updateStatus(ctx, result);
     return result;
@@ -145,7 +150,7 @@ export default function notesExtension(pi: ExtensionAPI): void {
     loader.clear();
     notify(
       ctx,
-      `已设置全局笔记目录：${directory}\n下一轮生效；默认注入内容会发送给当前模型。`,
+      `已设置全局记忆目录：${directory}\n下一轮生效；默认注入内容会发送给当前模型。`,
     );
     return completeSnapshot(ctx);
   }
@@ -227,7 +232,7 @@ export default function notesExtension(pi: ExtensionAPI): void {
     if (result.omitted && result.omitted !== previousOverflow)
       notify(
         ctx,
-        `关键词提醒超出剩余笔记预算：${result.omitted} 篇本轮未提供。默认笔记优先；可调整 maxContextBytes。`,
+        `关键词提醒超出剩余记忆预算：${result.omitted} 篇本轮未提供。默认记忆优先；可调整 maxContextBytes。`,
         "warning",
       );
     previousOverflow = result.omitted;
@@ -249,15 +254,15 @@ export default function notesExtension(pi: ExtensionAPI): void {
       reminders.configure(undefined, 0);
       const message = errorMessage(error);
       report(ctx, undefined, message);
-      // Tell the model about missing context without reusing stale notes.
+      // Tell the model about missing context without reusing stale memories.
       return {
-        systemPrompt: `${event.systemPrompt}\n\n# 笔记\n本轮笔记上下文不可用：${message}\n请勿假定已加载笔记；用户可通过 /notes 检查配置。`,
+        systemPrompt: `${event.systemPrompt}\n\n# 记忆\n本轮记忆上下文不可用：${message}\n请勿假定已加载记忆；用户可通过 /memory 检查配置。`,
       };
     }
   });
 
-  pi.registerCommand("notes", {
-    description: "配置笔记目录，查看默认注入内容",
+  pi.registerCommand("memory", {
+    description: "配置记忆目录，查看默认注入内容",
     getArgumentCompletions(prefix) {
       return ["set", "preview", "clear", "help"]
         .filter((item) => item !== prefix && item.startsWith(prefix))
@@ -265,7 +270,7 @@ export default function notesExtension(pi: ExtensionAPI): void {
     },
     handler: async (args, ctx) => {
       if (!ctx.isIdle()) {
-        notify(ctx, "请等当前回复结束后再使用 /notes。", "warning");
+        notify(ctx, "请等当前回复结束后再使用 /memory。", "warning");
         return;
       }
       const match = /^(\S+)(?:\s+([\s\S]*))?$/.exec(args.trim());
@@ -277,7 +282,7 @@ export default function notesExtension(pi: ExtensionAPI): void {
           return;
         }
         if (command === "set") {
-          if (!argument) throw new Error("用法：/notes set <目录>");
+          if (!argument) throw new Error("用法：/memory set <目录>");
           await setDirectory(argument, ctx);
           return;
         }
@@ -289,7 +294,7 @@ export default function notesExtension(pi: ExtensionAPI): void {
           );
           loader.clear();
           await completeSnapshot(ctx);
-          notify(ctx, "已停用默认注入。笔记文件和已有会话历史保持不变。");
+          notify(ctx, "已停用默认注入。记忆文件和已有会话历史保持不变。");
           return;
         }
         let current: Snapshot | undefined;
@@ -306,7 +311,7 @@ export default function notesExtension(pi: ExtensionAPI): void {
         if (command === "preview") {
           if (!current)
             throw new Error(
-              "尚未配置目录，也未发现项目 .note。使用 /notes set <目录> 设置。",
+              "尚未配置目录，也未发现项目 .memory。使用 /memory set <目录> 设置。",
             );
           await showPreview(ctx, current);
           return;
@@ -316,24 +321,24 @@ export default function notesExtension(pi: ExtensionAPI): void {
             ctx,
             current
               ? `${sourceLabel(current)}\n${summary(current)}\n${HELP}`
-              : `尚未配置笔记目录。\n${HELP}`,
+              : `尚未配置记忆目录。\n${HELP}`,
           );
           return;
         }
         // Pi's native picker keeps configuration secondary to the preview.
         while (true) {
           const title = problem
-            ? `Pi Notes · 配置待检查\n${problem}`
+            ? `Pi Memory · 配置待检查\n${problem}`
             : current
-            ? `Pi Notes\n${terminalText(sourceLabel(current))}\n${summary(
+            ? `Pi Memory\n${terminalText(sourceLabel(current))}\n${summary(
                 current,
               )}`
-            : `Pi Notes · 尚未配置目录`;
+            : `Pi Memory · 尚未配置目录`;
           const options = problem
-            ? ["重新设置笔记目录"]
+            ? ["重新设置记忆目录"]
             : current
-            ? ["查看注入预览", "更换笔记目录", "停用默认注入"]
-            : ["设置笔记目录"];
+            ? ["查看注入预览", "更换记忆目录", "停用默认注入"]
+            : ["设置记忆目录"];
           const choice = await ctx.ui.select(title, options);
           if (!choice) return;
           if (choice === "查看注入预览") {
@@ -345,12 +350,12 @@ export default function notesExtension(pi: ExtensionAPI): void {
             );
             loader.clear();
             await completeSnapshot(ctx);
-            notify(ctx, "已停用默认注入，笔记文件保持不变。");
+            notify(ctx, "已停用默认注入，记忆文件保持不变。");
             return;
           } else {
             const input = await ctx.ui.input(
-              "笔记目录（全局；自动注入内容会发送给当前模型）",
-              current?.directory ?? defaultNotesDirectory(configPath),
+              "记忆目录（全局；自动注入内容会发送给当前模型）",
+              current?.directory ?? defaultMemoryDirectory(configPath),
             );
             if (input === undefined) continue;
             current = await setDirectory(input, ctx);

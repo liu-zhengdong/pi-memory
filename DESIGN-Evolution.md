@@ -1,10 +1,16 @@
-# Pi Notes 设计演进
+# Pi Memory 设计演进
+
+## 2026-10-01 · 改造成 pi-memory：深层 defaultopen 变常驻索引、加上限提醒、去掉 npm 发布
+
+- 发生：用户要求把本地的 pi-notes 改造成记忆插件（issue #9）：整体改名 pi-memory、给常驻内容加上限提醒；并明确「记忆的条数超过多少条、记忆总量超过多少等就可以判定，根本不需要一个形式上的 Memory.md」，否决手写索引文件；单篇常驻全文的提醒阈值定为 8 KiB。用户随后确认不再发布 npm、只从 GitHub 直装，仓库一并改名 pi-memory。
+- 分析：手写 `MEMORY.md` 等于第二份事实源，条目与文件的对应关系要人工维持；而谁常驻完全由文件里的 `defaultopen` 决定，插件扫描一遍 frontmatter 就能推导出索引，所以索引交给插件生成。原关键词机制的问题是两种用途都没落地：真实库（7101 篇 md，2134 篇有 frontmatter）里 `keywords:` 0 篇在用、深层 `defaultopen: true` 0 篇，只有根层 16 篇（2 篇全文 + 14 篇指针）对 AI 可见——机制存在但没有使用者，于是把深层 `defaultopen: true` 明确为「常驻索引条目」，保留关键词提醒作为补充。库整体规模只影响后台索引时间、不占每轮上下文，所以只显示不设限；真正决定每轮成本的是常驻条数和单篇常驻全文。
+- 改变：命名统一为 memory（包 `@liuser/pi-memory` 0.2.0、命令 `/memory`、配置 `memory.json`、缓存 `cache/pi-memory`、默认目录 `<agentDir>/memory`、项目来源 `.memory/`、注入标题「# 记忆」），不写旧名兼容。深层 `defaultopen: true` 登记为常驻条目，作为独立 `# 常驻记忆` 块追加在所有来源块之后，每轮只注入指针（名称、路径、定位、描述），正文按路径按需读取；已常驻的条目不再触发关键词提醒。新增 `src/limits.ts`：常驻条目 200 条（超出不登记并列出未登记项）、单篇常驻全文 8 KiB（提醒，不阻止）；沿用注入块 256 KiB、单篇 frontmatter 64 KiB、索引 10 万条 / 16 MiB，超预算时常驻块整块不注入并说明原因，不做部分截断；提醒出现在状态栏、通知和 `/memory preview`。删除 npm 发布链路（`release.yml`、`publishConfig`、`prepack`、`files`、`tsconfig.build.json`、`scripts/check-tag.mjs`、`docs/publishing*.md`），安装改为 `pi install git:github.com/liu-zhengdong/pi-memory`，`scripts/test-package.mjs` 改为 `scripts/test-install.mjs`（从仓库直接加载，不再打 tarball）。本轮不做：手写 `MEMORY.md`、模型自写记忆的提示词（未验证价值，不留空开关）、库规模上限。
 
 ## 2026-09-20 · 未配置时默认使用 agent 目录下的 notes/
 
 - 发生：用户确认全局笔记未配置时应跟随 AgentDir，默认 `<agentDir>/notes`，与 Experience 的 run-archive 一致，便于 Atrium 按身份隔离。
-- 分析：`notes.json` 与缓存本来就在 agent 目录；会串用的是文件里的绝对 `directory`。`/notes clear` 写入 `null` 必须仍表示显式停用。默认目录不存在时若仍写入该路径，每轮会报 ENOENT。
-- 改变：没有 `notes.json` 或没有 `directory` 字段时，若 `<agentDir>/notes` 存在且可读则用作全局来源，否则不加全局来源、不报错、不自动建目录。已有绝对路径配置不变。
+- 分析：`memory.json` 与缓存本来就在 agent 目录；会串用的是文件里的绝对 `directory`。`/notes clear` 写入 `null` 必须仍表示显式停用。默认目录不存在时若仍写入该路径，每轮会报 ENOENT。
+- 改变：没有 `memory.json` 或没有 `directory` 字段时，若 `<agentDir>/notes` 存在且可读则用作全局来源，否则不加全局来源、不报错、不自动建目录。已有绝对路径配置不变。
 
 ## 2026-09-16 · 索引准备与缓存复用
 
@@ -26,7 +32,7 @@
 
 - 发生：用户确认设计并授权开发。
 - 分析：所需闭环是配置一次、自动提供根入口、按需深入；现有 Pi 文件工具已能承担后续读取，无需新建搜索索引或笔记工具。自动注入需要明确资源上限，避免大笔记或错误属性导致上下文意外膨胀。
-- 改变：实现全局 `notes.json`、`/notes` 配置与只读预览、根层发现、严格属性解析、变更缓存和逐轮系统提示追加。增加字节预算、单篇失败保留路径和整块失败明确报告；原 USER 注入机制保持不变。
+- 改变：实现全局 `memory.json`、`/notes` 配置与只读预览、根层发现、严格属性解析、变更缓存和逐轮系统提示追加。增加字节预算、单篇失败保留路径和整块失败明确报告；原 USER 注入机制保持不变。
 
 ## 真实终端验证中的修正
 
@@ -44,7 +50,7 @@
 
 - 发生：用户确认设计并授权实现；随后实跑验证。
 - 分析：核心改动是把「单一目录快照」模型改为「有序多来源」模型——发现（cwd 向上到 git 根）、策略（全局优先、项目浅到深、全局目录覆盖的路径去重）、信任（`ctx.isProjectTrusted()`，实测发现 `--no-approve` 本身就是 trust override 会强制关闭信任；无 `.pi` 等资源的普通项目在 Pi 中自动受信，与 AGENTS.md 同层）、预算改为整源排除而非整体拒绝。实测还发现无资源项目的自动受信行为，已补充进信任门槛描述。
-- 改变：实现 `discoverNoteDirectories` / `resolveSources` / 按来源加载与排除、`# 项目笔记` 双标题版式、preview 附「未注入来源」清单；`/notes` 状态、摘要与预览聚合多来源。新增发现、去重、信任、顺序、预算、不可读来源六类测试；integration 与 TUI/基准适配新 Snapshot 结构。实测通过：未信任（`.pi/settings.json` 未决定）不注入且报原因、已信任注入、全局→项目顺序、深层不注入、单笔记超限降级、整源超预算排除且其余来源完整。
+- 改变：实现 `discoverMemoryDirectories` / `resolveSources` / 按来源加载与排除、`# 项目笔记` 双标题版式、preview 附「未注入来源」清单；`/notes` 状态、摘要与预览聚合多来源。新增发现、去重、信任、顺序、预算、不可读来源六类测试；integration 与 TUI/基准适配新 Snapshot 结构。实测通过：未信任（`.pi/settings.json` 未决定）不注入且报原因、已信任注入、全局→项目顺序、深层不注入、单笔记超限降级、整源超预算排除且其余来源完整。
 
 ## 2026-09-16 · 关键词按需提醒设计
 

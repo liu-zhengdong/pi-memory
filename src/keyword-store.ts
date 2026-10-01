@@ -4,7 +4,7 @@ import { mkdir, open, readdir, rename, rm, writeFile } from "node:fs/promises";
 import { join, resolve, sep } from "node:path";
 import { errorMessage } from "./config.ts";
 import { KeywordIndex, MAX_INDEX_BYTES } from "./keywords.ts";
-import type { Snapshot, SourceSnapshot } from "./notes.ts";
+import type { Snapshot, SourceSnapshot } from "./memory.ts";
 
 interface Source {
   root: string;
@@ -114,6 +114,8 @@ export class KeywordStore {
       text: "",
       bytes: 0,
       issues: [],
+      residentCount: 0,
+      residentPaths: [],
       reads: 0,
       cacheHits: 0,
     });
@@ -218,7 +220,7 @@ export class KeywordStore {
         !data ||
         typeof data !== "object" ||
         !("version" in data) ||
-        data.version !== 1 ||
+        data.version !== 2 ||
         !("root" in data) ||
         data.root !== state.root ||
         !("entries" in data)
@@ -303,6 +305,8 @@ export class KeywordStore {
         text: "",
         bytes: 0,
         issues: [],
+        residentCount: 0,
+        residentPaths: [],
         reads: 0,
         cacheHits: 0,
       },
@@ -326,7 +330,7 @@ export class KeywordStore {
       .then(async () => {
         if (!state.loaded || !state.lastScan) return;
         const text = JSON.stringify({
-          version: 1,
+          version: 2,
           root: state.root,
           entries: state.index.exportCache(),
         });

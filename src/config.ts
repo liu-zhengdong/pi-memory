@@ -12,20 +12,20 @@ import { homedir } from "node:os";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 
 export const DEFAULT_MAX_CONTEXT_BYTES = 256 * 1024;
-export interface NotesConfig {
+export interface MemoryConfig {
   directory: string | null;
   maxContextBytes: number;
 }
 
-/** Unconfigured global notes live next to notes.json: `<agentDir>/notes`. */
-export function defaultNotesDirectory(configPath: string): string {
-  return join(dirname(configPath), "notes");
+/** Unconfigured global memories live next to memory.json: `<agentDir>/memory`. */
+export function defaultMemoryDirectory(configPath: string): string {
+  return join(dirname(configPath), "memory");
 }
 
 async function presentDefaultDirectory(
   configPath: string,
 ): Promise<string | null> {
-  const directory = defaultNotesDirectory(configPath);
+  const directory = defaultMemoryDirectory(configPath);
   try {
     const real = await realpath(directory);
     await readdir(real);
@@ -64,7 +64,7 @@ export async function validateDirectory(
   return directory;
 }
 
-export async function loadConfig(path: string): Promise<NotesConfig> {
+export async function loadConfig(path: string): Promise<MemoryConfig> {
   let raw: string;
   try {
     raw = await readFile(path, "utf8");

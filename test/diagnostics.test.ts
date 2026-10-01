@@ -4,17 +4,17 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test, type TestContext } from "node:test";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import notesExtension from "../src/index.ts";
+import memoryExtension from "../src/index.ts";
 import { KeywordStore } from "../src/keyword-store.ts";
 
 async function fixture(t: TestContext, rootFailure = false) {
-  const dir = await mkdtemp(join(tmpdir(), "notes-diagnostics-"));
+  const dir = await mkdtemp(join(tmpdir(), "memory-diagnostics-"));
   const vault = join(dir, "vault");
   const project = join(dir, "project");
   const agent = join(dir, "agent");
   await Promise.all([mkdir(vault), mkdir(join(project, ".git"), { recursive: true }), mkdir(agent)]);
   await writeFile(join(vault, "root.md"), rootFailure ? "---\ndefaultopen: invalid\n---\n" : "Root note");
-  await writeFile(join(agent, "notes.json"), JSON.stringify({ directory: vault }));
+  await writeFile(join(agent, "memory.json"), JSON.stringify({ directory: vault }));
   const oldAgent = process.env.PI_CODING_AGENT_DIR;
   process.env.PI_CODING_AGENT_DIR = agent;
   let deepIssues: string[] = [];
@@ -48,7 +48,7 @@ async function fixture(t: TestContext, rootFailure = false) {
       },
       input: async () => inputs.shift(),
       setStatus: (key: string, value: string | undefined) => {
-        assert.equal(key, "pi-notes");
+        assert.equal(key, "pi-memory");
         statuses.push(value);
       },
       notify: (message: string, level: string) => {
@@ -56,10 +56,10 @@ async function fixture(t: TestContext, rootFailure = false) {
       },
     },
   } as unknown as ExtensionContext;
-  notesExtension({
+  memoryExtension({
     on: (event: string, handler: (event: any, ctx: ExtensionContext) => unknown) => handlers.set(event, handler),
     registerCommand: (name: string, command: { handler: typeof commandHandler }) => {
-      assert.equal(name, "notes");
+      assert.equal(name, "memory");
       commandHandler = command.handler;
     },
     appendEntry: () => {},
@@ -92,13 +92,13 @@ async function fixture(t: TestContext, rootFailure = false) {
       return path;
     },
     addProjectNotes: async () => {
-      await mkdir(join(project, ".note"));
-      await writeFile(join(project, ".note", "root.md"), "Project root");
+      await mkdir(join(project, ".memory"));
+      await writeFile(join(project, ".memory", "root.md"), "Project root");
     },
     setIssues: (issues: string[]) => { deepIssues = issues; },
     setRootFailure: (failed: boolean) => writeFile(join(vault, "root.md"), failed ? "---\ndefaultopen: invalid\n---\n" : "Root note"),
-    disable: () => writeFile(join(agent, "notes.json"), JSON.stringify({ directory: null })),
-    invalidateConfig: () => writeFile(join(agent, "notes.json"), JSON.stringify({ enabled: false })),
+    disable: () => writeFile(join(agent, "memory.json"), JSON.stringify({ directory: null })),
+    invalidateConfig: () => writeFile(join(agent, "memory.json"), JSON.stringify({ enabled: false })),
     holdNextPublication: () => {
       let finish!: (error?: Error) => void;
       nextPublication = new Promise<void>((resolve, reject) => { finish = error => error ? reject(error) : resolve(); });
@@ -166,7 +166,7 @@ for (const entry of ["arguments", "menu"] as const) {
     const good = await f.createDirectory("good", false);
     for (const path of [bad, good]) {
       if (entry === "menu") {
-        f.select("更换笔记目录", path);
+        f.select("更换记忆目录", path);
         await f.command("");
       } else await f.command(`set ${path}`);
       assert.equal(f.warnings.length, 1, "the bad directory warns during the command, not a later send");
@@ -230,12 +230,12 @@ for (const action of ["repaired", "disabled", "invalid-config", "shutdown"] as c
 
 test("terminal snapshot failures notify immediately and stay deduplicated", async t => {
   const f = await fixture(t);
-  const { NotesLoader } = await import("../src/notes.ts");
-  const broken = t.mock.method(NotesLoader.prototype, "scan", async () => { throw new Error("root scan failed"); });
+  const { MemoryLoader } = await import("../src/memory.ts");
+  const broken = t.mock.method(MemoryLoader.prototype, "scan", async () => { throw new Error("root scan failed"); });
   await f.before();
   await f.before();
   assert.deepEqual(f.warnings, ["root scan failed"]);
-  assert.equal(f.statuses.at(-1), "notes · 异常");
+  assert.equal(f.statuses.at(-1), "memory · 异常");
   broken.mock.restore();
   await f.send();
   assert.doesNotMatch(f.statuses.at(-1)!, /异常|!/);

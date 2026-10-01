@@ -16,29 +16,29 @@ import { join } from "node:path";
 import { test } from "node:test";
 import {
   DEFAULT_MAX_CONTEXT_BYTES,
-  defaultNotesDirectory,
+  defaultMemoryDirectory,
   loadConfig,
   saveDirectory,
   validateDirectory,
 } from "../src/config.ts";
 import {
-  discoverNoteDirectories,
+  discoverMemoryDirectories,
   headerBounds,
   MAX_HEADER_BYTES,
-  NotesLoader,
+  MemoryLoader,
   parseMetadata,
   previewSnapshot,
   resolveSources,
   UNTRUSTED_REASON,
-} from "../src/notes.ts";
+} from "../src/memory.ts";
 
 async function fixture(t: { after: (fn: () => Promise<void>) => void }) {
-  const directory = await mkdtemp(join(tmpdir(), "pi-notes-test-"));
+  const directory = await mkdtemp(join(tmpdir(), "pi-memory-test-"));
   t.after(() => rm(directory, { recursive: true, force: true }));
   return {
     directory,
     config: { directory, maxContextBytes: DEFAULT_MAX_CONTEXT_BYTES },
-    loader: new NotesLoader(),
+    loader: new MemoryLoader(),
   };
 }
 
@@ -280,22 +280,22 @@ test("unreadable files and directories are reported, recover after repair", asyn
   }
 });
 
-test("discoverNoteDirectories walks shallow to deep and stops at the git root", async (t) => {
+test("discoverMemoryDirectories walks shallow to deep and stops at the git root", async (t) => {
   const { directory } = await fixture(t);
   const nested = join(directory, "a", "b");
   await mkdir(join(nested), { recursive: true });
-  await mkdir(join(directory, ".note"));
-  await mkdir(join(directory, "a", ".note"));
-  await mkdir(join(nested, ".note"));
+  await mkdir(join(directory, ".memory"));
+  await mkdir(join(directory, "a", ".memory"));
+  await mkdir(join(nested, ".memory"));
   await mkdir(join(directory, "a", ".git"));
-  const fromLeaf = await discoverNoteDirectories(nested);
+  const fromLeaf = await discoverMemoryDirectories(nested);
   assert.deepEqual(fromLeaf.paths, [
-    join(directory, "a", ".note"),
-    join(nested, ".note"),
+    join(directory, "a", ".memory"),
+    join(nested, ".memory"),
   ]);
   assert.deepEqual(fromLeaf.issues, []);
-  const fromRoot = await discoverNoteDirectories(directory);
-  assert.deepEqual(fromRoot.paths, [join(directory, ".note")]);
+  const fromRoot = await discoverMemoryDirectories(directory);
+  assert.deepEqual(fromRoot.paths, [join(directory, ".memory")]);
 });
 
 test("resolveSources dedups identical roots, preserves hidden nested .note and marks untrusted projects", async (t) => {
@@ -307,7 +307,7 @@ test("resolveSources dedups identical roots, preserves hidden nested .note and m
     maxContextBytes: DEFAULT_MAX_CONTEXT_BYTES,
   };
   const discovery = {
-    paths: [vault, join(vault, ".note"), join(directory, "a", ".note")],
+    paths: [vault, join(vault, ".memory"), join(directory, "a", ".memory")],
     issues: [],
   };
   const trusted = resolveSources(config, discovery, () => true);
@@ -315,8 +315,8 @@ test("resolveSources dedups identical roots, preserves hidden nested .note and m
     trusted.map((source) => [source.kind, source.path, source.reason]),
     [
       ["global", vault, undefined],
-      ["project", join(vault, ".note"), undefined],
-      ["project", join(directory, "a", ".note"), undefined],
+      ["project", join(vault, ".memory"), undefined],
+      ["project", join(directory, "a", ".memory"), undefined],
     ],
   );
   const untrusted = resolveSources(config, discovery, () => false);
@@ -327,8 +327,8 @@ test("resolveSources dedups identical roots, preserves hidden nested .note and m
 test("scan injects global first then project shallow to deep; reason-marked sources stay out of model context", async (t) => {
   const { directory, loader } = await fixture(t);
   const vault = join(directory, "vault");
-  const shallow = join(directory, "pa", ".note");
-  const deep = join(directory, "pb", "sub", ".note");
+  const shallow = join(directory, "pa", ".memory");
+  const deep = join(directory, "pb", "sub", ".memory");
   for (const path of [vault, shallow, deep])
     await mkdir(path, { recursive: true });
   await writeFile(
@@ -358,7 +358,7 @@ test("scan injects global first then project shallow to deep; reason-marked sour
     { kind: "project", path: deep },
   ]);
   assert.equal(result.sources.length, 4);
-  assert.ok(result.sources[0].text.startsWith("# 笔记"));
+  assert.ok(result.sources[0].text.startsWith("# 记忆"));
   assert.ok(
     result.text.indexOf("GLOBAL_BODY") < result.text.indexOf("SHALLOW_BODY"),
   );
@@ -429,9 +429,9 @@ test("unreadable sources are skipped with reasons while other sources still inje
 });
 test("configuration: validation, quoted/spaced paths, atomic writes and invalid-file preservation", async (t) => {
   const { directory } = await fixture(t);
-  const path = join(directory, "config", "notes.json");
+  const path = join(directory, "config", "memory.json");
   assert.equal((await loadConfig(path)).directory, null);
-  const fallback = defaultNotesDirectory(path);
+  const fallback = defaultMemoryDirectory(path);
   await mkdir(fallback, { recursive: true });
   const realFallback = await realpath(fallback);
   assert.equal((await loadConfig(path)).directory, realFallback);

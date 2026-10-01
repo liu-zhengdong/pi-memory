@@ -9,7 +9,7 @@ import { Rpc } from "./rpc.ts";
 
 const repo = fileURLToPath(new URL("..", import.meta.url));
 const artifact = resolve(
-  process.env.NOTES_TEST_ARTIFACTS ??
+  process.env.MEMORY_TEST_ARTIFACTS ??
     join(repo, ".artifacts", `integration-${Date.now()}`),
 );
 const raw = join(artifact, "raw");
@@ -85,7 +85,7 @@ const env = {
   PI_CODING_AGENT_DIR: agentDir,
   PI_OFFLINE: "1",
   PI_TELEMETRY: "0",
-  NOTES_TEST_URL: `http://127.0.0.1:${address.port}/v1`,
+  MEMORY_TEST_URL: `http://127.0.0.1:${address.port}/v1`,
 };
 await writeFile(
   join(agentDir, "settings.json"),
@@ -121,7 +121,7 @@ try {
       "-e",
       join(repo, "test/fixture-provider.ts"),
       "--provider",
-      "notes-fixture",
+      "memory-fixture",
       "--model",
       "fixture",
     ],
@@ -131,20 +131,20 @@ try {
   );
   const commands = await rpc.request("get_commands");
   assert.ok(
-    commands.data.commands.some((command: any) => command.name === "notes"),
+    commands.data.commands.some((command: any) => command.name === "memory"),
   );
-  await rpc.request("prompt", { message: `/notes set "${vault}"` });
+  await rpc.request("prompt", { message: `/memory set "${vault}"` });
   assert.equal(
-    JSON.parse(await readFile(join(agentDir, "notes.json"), "utf8")).directory,
+    JSON.parse(await readFile(join(agentDir, "memory.json"), "utf8")).directory,
     vault,
   );
   const start = rpc.events.length;
-  await rpc.request("prompt", { message: "/notes preview" });
+  await rpc.request("prompt", { message: "/memory preview" });
   const preview = rpc.events
     .slice(start)
     .find(
       (event) =>
-        event.method === "notify" && event.message.startsWith("# 笔记"),
+        event.method === "notify" && event.message.startsWith("# 记忆"),
     )?.message;
   assert.ok(preview, "RPC preview must be UI-only");
   await writeFile(join(raw, "preview.md"), preview);
@@ -172,6 +172,11 @@ try {
     assert.ok(system().includes(text), text);
   for (const text of ["HIDDEN_BODY", "NESTED_HIDDEN"])
     assert.ok(!system().includes(text), text);
+  assert.ok(system().includes("# 常驻记忆"), "深层 defaultopen 登记为常驻条目");
+  assert.ok(
+    system().includes(join(vault, "项目", "深层", "任务.md")),
+    "常驻条目带绝对路径",
+  );
   await rpc.prompt("second");
   assert.equal(system().split("FULL_ALPHA").length - 1, 1);
   await writeFile(
@@ -206,36 +211,36 @@ try {
     join(other, "b.md"),
     "---\ndefaultopen: true\n---\nOTHER_VAULT",
   );
-  await rpc.request("prompt", { message: `/notes set ${other}` });
+  await rpc.request("prompt", { message: `/memory set ${other}` });
   await rpc.prompt("after directory switch");
   assert.ok(system().includes("OTHER_VAULT") && !system().includes(vault));
   // A failed set must preserve the last valid configuration.
   await rpc.request("prompt", {
-    message: `/notes set ${join(work, "missing")}`,
+    message: `/memory set ${join(work, "missing")}`,
   });
   assert.equal(
-    JSON.parse(await readFile(join(agentDir, "notes.json"), "utf8")).directory,
+    JSON.parse(await readFile(join(agentDir, "memory.json"), "utf8")).directory,
     other,
   );
-  await rpc.request("prompt", { message: "/notes clear" });
+  await rpc.request("prompt", { message: "/memory clear" });
   await rpc.prompt("after clear");
   assert.ok(
     !system().includes("OTHER_VAULT") && system().includes("ORIGINAL_CONTEXT"),
   );
   const messages = (await rpc.request("get_messages")).data.messages;
   assert.ok(
-    !JSON.stringify(messages).includes("# 笔记"),
+    !JSON.stringify(messages).includes("# 记忆"),
     "notes and previews must not be appended to history",
   );
-  await writeFile(join(agentDir, "notes.json"), "{ invalid");
+  await writeFile(join(agentDir, "memory.json"), "{ invalid");
   await rpc.prompt("invalid config");
   assert.ok(
-    system().includes("本轮笔记上下文不可用") &&
+    system().includes("本轮记忆上下文不可用") &&
       !system().includes("OTHER_VAULT"),
   );
   assert.ok(!rpc.events.some((event) => event.type === "extension_error"));
   await writeFile(
-    join(agentDir, "notes.json"),
+    join(agentDir, "memory.json"),
     JSON.stringify({ directory: other }),
   );
   for (const mode of ["print", "json"]) {
@@ -250,15 +255,15 @@ try {
         "-e",
         join(repo, "test/fixture-provider.ts"),
         "--provider",
-        "notes-fixture",
+        "memory-fixture",
         "--model",
         "fixture",
         ...(mode === "print" ? ["-p"] : ["--mode", "json"]),
-        "/notes preview",
+        "/memory preview",
       ],
       {
         cwd: work,
-        env: { ...env, NOTES_TEST_URL: "http://127.0.0.1:9/v1" },
+        env: { ...env, MEMORY_TEST_URL: "http://127.0.0.1:9/v1" },
         encoding: "utf8",
         timeout: 15000,
       },
@@ -267,7 +272,7 @@ try {
     await writeFile(join(raw, `${mode}-stderr.txt`), result.stderr);
     assert.equal(result.status, 0, result.stderr);
     assert.ok(
-      result.stderr.includes("# 笔记") && result.stderr.includes("OTHER_VAULT"),
+      result.stderr.includes("# 记忆") && result.stderr.includes("OTHER_VAULT"),
     );
     if (mode === "print") assert.equal(result.stdout.trim(), "");
     else

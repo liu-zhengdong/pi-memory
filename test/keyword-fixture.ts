@@ -3,7 +3,7 @@ import fixtureProvider from "./fixture-provider.ts";
 
 export default function keywordFixture(pi: ExtensionAPI): void {
   fixtureProvider(pi);
-  pi.registerCommand("notes-test-origin", {
+  pi.registerCommand("memory-test-origin", {
     description: "Test-only: branch exactly at the triggering assistant",
     handler: async (_args, ctx) => {
       const entry = ctx.sessionManager
@@ -18,13 +18,13 @@ export default function keywordFixture(pi: ExtensionAPI): void {
       await ctx.navigateTree(entry.id, { summarize: false });
     },
   });
-  pi.registerCommand("notes-test-boundary", {
+  pi.registerCommand("memory-test-boundary", {
     description:
       "Test-only: add a compaction boundary without starting the model",
     handler: async () => {
       pi.sendMessage(
         {
-          customType: "notes-test-boundary",
+          customType: "memory-test-boundary",
           content: "Summary boundary.",
           display: false,
         },
@@ -33,13 +33,13 @@ export default function keywordFixture(pi: ExtensionAPI): void {
     },
   });
   pi.on("project_trust", () => ({
-    trusted: process.env.NOTES_TEST_TRUST === "yes" ? "yes" : "no",
+    trusted: process.env.MEMORY_TEST_TRUST === "yes" ? "yes" : "no",
   }));
   // Deterministic real-host compaction: discard reminders, keep the last assistant.
   // This tests lifecycle/context reconstruction, not summary-model quality.
   pi.on("session_before_compact", (event) => {
     const last =
-      event.customInstructions === "notes-test-drop-all"
+      event.customInstructions === "memory-test-drop-all"
         ? event.branchEntries.at(-1)
         : event.branchEntries.findLast(
             (entry) =>
