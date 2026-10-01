@@ -6,8 +6,8 @@ import { readHeader, signature, type Note, type Snapshot } from "./memory.ts";
 
 export interface KeywordNote extends Note {
   keywords: string[];
-  /** 深层 `defaultopen: true`：每轮登记为常驻记忆，正文仍按需读取。 */
-  open?: true;
+  /** 深层 frontmatter 里的 `defaultopen`：不生效，仅用于提醒。 */
+  deepDefaultopen?: true;
 }
 
 // Include negative lookups in the cache: most notes need no reminder.
@@ -28,11 +28,6 @@ export class KeywordIndex {
   cacheHits = 0;
   private cache = new Map<string, Cached>();
   private cacheBytes = 0;
-
-  /** 深层标记 defaultopen 的记忆；顺序随索引（按路径）。 */
-  get residents(): KeywordNote[] {
-    return [...this.notes.values()].filter((note) => note.open);
-  }
 
   clear(): void {
     this.notes.clear();
@@ -109,8 +104,9 @@ export class KeywordIndex {
               !word.trim() ||
               word !== word.trim().toLowerCase(),
           ) ||
-          (note.open !== undefined && note.open !== true) ||
-          (!note.keywords.length && note.open !== true) ||
+          (note.deepDefaultopen !== undefined &&
+            note.deepDefaultopen !== true) ||
+          (!note.keywords.length && note.deepDefaultopen !== true) ||
           [note.description, note.purpose].some(
             (value) => value !== undefined && typeof value !== "string",
           ))
@@ -125,7 +121,7 @@ export class KeywordIndex {
           keywords: note.keywords,
           description: note.description,
           purpose: note.purpose,
-          open: note.open,
+          deepDefaultopen: note.deepDefaultopen,
         },
       });
     }
@@ -248,7 +244,7 @@ export class KeywordIndex {
                   keywords: metadata.keywords ?? [],
                   description: metadata.description,
                   purpose: metadata.purpose,
-                  open: metadata.defaultopen ? true : undefined,
+                  deepDefaultopen: metadata.defaultopen ? true : undefined,
                 };
               if (
                 signature(before) !==
@@ -282,6 +278,12 @@ export class KeywordIndex {
         report(`${directory}：${errorMessage(error).split("\n")[0]}`);
       }
     }
+    // 深层写 defaultopen 不生效：只有根层的默认展开会注入正文。
+    for (const note of notes.values())
+      if (note.deepDefaultopen)
+        report(
+          `${note.path}：defaultopen 只对根层记忆生效；深层记忆请由上层笔记的引用指向，本条未生效。`,
+        );
     if (omitted)
       report(`关键词索引达到 16 MiB 上限，${omitted} 篇记忆未索引。`);
     if (issueCount > this.issues.length)

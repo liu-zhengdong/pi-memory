@@ -28,8 +28,6 @@ export function summary(snapshot: Snapshot): string {
     0,
   );
   const parts = [`${full} 全文`, `${notes - full} 按需`];
-  if (snapshot.residentCount)
-    parts.push(`${snapshot.residentCount} 常驻`);
   parts.push(
     `${injected.reduce(
       (count, source) => count + source.folders.length,

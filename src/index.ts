@@ -19,7 +19,6 @@ import {
   type Snapshot,
 } from "./memory.ts";
 import { KeywordStore } from "./keyword-store.ts";
-import { RESIDENT_ENTRY_LIMIT } from "./limits.ts";
 import { JOURNAL_TYPE, Reminders } from "./reminders.ts";
 import {
   notify,
@@ -71,10 +70,8 @@ export default function memoryExtension(pi: ExtensionAPI): void {
           ? "memory · 异常"
           : snapshot
           ? `memory · ${injectedMemories(snapshot)} 记忆${
-              snapshot.residentCount
-                ? ` · ${snapshot.residentCount} 常驻/${RESIDENT_ENTRY_LIMIT}`
-                : ""
-            }${store.pending ? " · 索引准备中" : ""}${
+              store.pending ? " · 索引准备中" : ""
+            }${
               snapshot.issues.length || previousWarning ? " · !" : ""
             }`
           : undefined,
@@ -120,7 +117,7 @@ export default function memoryExtension(pi: ExtensionAPI): void {
       report(ctx);
       return;
     }
-    const result = await loader.scan(config, sources, index.residents);
+    const result = await loader.scan(config, sources);
     store.prepare(result);
     updateStatus(ctx, result);
     return result;

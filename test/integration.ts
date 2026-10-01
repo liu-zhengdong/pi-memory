@@ -45,7 +45,7 @@ await writeFile(
 );
 await writeFile(
   join(vault, "项目", "深层", "任务.md"),
-  "---\ndefaultopen: true\n---\nNESTED_HIDDEN\n",
+  "---\ndefaultopen: false\n---\nNESTED_HIDDEN\n",
 );
 const requests: any[] = [];
 const server = createServer(async (request, response) => {
@@ -172,10 +172,10 @@ try {
     assert.ok(system().includes(text), text);
   for (const text of ["HIDDEN_BODY", "NESTED_HIDDEN"])
     assert.ok(!system().includes(text), text);
-  assert.ok(system().includes("# 常驻记忆"), "深层 defaultopen 登记为常驻条目");
+  assert.ok(!system().includes("# 常驻记忆"), "深层记忆不登记常驻条目");
   assert.ok(
-    system().includes(join(vault, "项目", "深层", "任务.md")),
-    "常驻条目带绝对路径",
+    !system().includes(join(vault, "项目", "深层", "任务.md")),
+    "深层记忆不出现在默认上下文",
   );
   await rpc.prompt("second");
   assert.equal(system().split("FULL_ALPHA").length - 1, 1);
@@ -202,6 +202,31 @@ try {
   assert.ok(system().includes("defaultopen 必须是布尔值"));
   for (const text of ["CREATED_ENTRY", "MALFORMED_PRIVATE", "FULL_BETA"])
     assert.ok(!system().includes(text));
+  // 深层 defaultopen 不生效：提醒必须真的到达用户。
+  await writeFile(
+    join(vault, "项目", "深层", "误用.md"),
+    "---\ndescription: MISUSED_DEEP\ndefaultopen: true\n---\nMISUSED_BODY\n",
+  );
+  let warned = "";
+  for (let i = 0; i < 40 && !warned; i++) {
+    const start = rpc.events.length;
+    await rpc.request("prompt", { message: "/memory preview" });
+    warned = rpc.events
+      .slice(start)
+      .filter((event) => event.method === "notify")
+      .map((event) => event.message)
+      .join("\n");
+    if (!/defaultopen 只对根层记忆生效/.test(warned)) {
+      warned = "";
+      await new Promise((done) => setTimeout(done, 100));
+    }
+  }
+  assert.match(warned, /defaultopen 只对根层记忆生效/);
+  assert.match(warned, /误用\.md/);
+  await rpc.prompt("after deep defaultopen");
+  assert.ok(!system().includes("MISUSED_BODY"));
+  assert.ok(!system().includes("# 常驻记忆"));
+  await rm(join(vault, "项目", "深层", "误用.md"));
   await rpc.request("new_session");
   await rpc.prompt("new session");
   assert.ok(system().includes("REFERENCE_PURPOSE"));
@@ -303,6 +328,7 @@ try {
           "clear",
           "invalid config",
           "no history pollution",
+          "deep defaultopen reminder",
           "print and JSON stderr preview",
         ],
       },

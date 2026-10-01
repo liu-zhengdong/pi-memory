@@ -40,8 +40,8 @@ await writeFile(
   join(raw, "source-hashes.json"),
   JSON.stringify(before, null, 2),
 );
-// 深层关键词记忆保持 defaultopen: false：defaultopen: true 已改为常驻条目机制，
-// 常驻条目每轮都在上下文里，不再参与本文件要验收的关键词提醒路径。
+// 深层记忆保持 defaultopen: false：defaultopen 只对根层生效，深层内容由上层笔记的引用指向，
+// 深层记忆自身只在关键词命中时提醒。
 const note = (key: string, summary: string) =>
   `---\nkeywords: [${key}]\ndescription: ${summary}\npurpose: Reference for ${key}\ndefaultopen: false\n---\nPRIVATE_${summary}\n`;
 await writeFile(

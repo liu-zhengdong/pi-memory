@@ -125,18 +125,9 @@ try {
   await capture("08-narrow-menu");
   key("Escape");
   tmux("resize-window", "-t", "memory", "-x", "100", "-y", "40");
-  // 后台索引建好后重新取快照：状态栏先出现常驻计数，预览末尾应出现常驻条目块。
-  await waitFor("1 常驻");
-  await command("/memory preview");
-  await waitFor("只读预览");
-  key("PageDown");
-  key("PageDown");
-  await waitFor("常驻记忆");
-  await capture("08b-resident-preview");
-  key("Escape");
   await command("/memory set /missing-pi-memory-test-folder");
   await waitFor("ENOENT");
-  await capture("09-invalid-path");
+  await capture("08-invalid-path");
   assert.equal(
     JSON.parse(await readFile(join(agent, "memory.json"), "utf8")).directory,
     vault,
@@ -147,14 +138,14 @@ try {
   );
   await command("/memory preview");
   await waitFor("只读预览");
-  await capture("10-malformed-preview");
+  await capture("09-malformed-preview");
   assert.ok(
     !tmux("capture-pane", "-p", "-t", "memory").includes("PRIVATE_BODY"),
   );
   key("Escape");
   await command("/memory clear");
   await waitFor("已停用默认注入");
-  await capture("11-disabled");
+  await capture("10-disabled");
   assert.equal(
     JSON.parse(await readFile(join(agent, "memory.json"), "utf8")).directory,
     null,
@@ -166,7 +157,7 @@ try {
   );
   await command("/memory");
   await waitFor("设置记忆目录");
-  await capture("12-recovery-menu");
+  await capture("11-recovery-menu");
   key("Escape");
   await writeFile(
     join(raw, "result.json"),
@@ -177,7 +168,7 @@ try {
           [100, 40],
           [44, 24],
         ],
-        captures: 12,
+        captures: 11,
         modelRequests: 0,
       },
       null,

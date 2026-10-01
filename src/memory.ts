@@ -3,7 +3,7 @@ import { lstat, open, readdir, stat, type FileHandle } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { parseDocument } from "yaml";
 import { errorMessage, type MemoryConfig } from "./config.ts";
-import { planResidents, RESIDENT_ENTRY_LIMIT } from "./limits.ts";
+import { checkExpandedFull } from "./limits.ts";
 
 export const MAX_HEADER_BYTES = 64 * 1024;
 export interface Metadata {
@@ -51,10 +51,6 @@ export interface Snapshot {
   issues: string[];
   text: string;
   bytes: number;
-  /** 深层标记 defaultopen 的记忆条数；它们每轮只提供指针。 */
-  residentCount: number;
-  /** 本轮登记的常驻指针路径，与关键词提醒共用去重依据。 */
-  residentPaths: string[];
   reads: number;
   cacheHits: number;
 }
@@ -423,7 +419,6 @@ export class MemoryLoader {
   async scan(
     config: MemoryConfig,
     sources: SourceRequest[] = [],
-    openResidents: Note[] = [],
   ): Promise<Snapshot> {
     const { directory, maxContextBytes } = config;
     if (!sources.length)
@@ -436,8 +431,6 @@ export class MemoryLoader {
       issues: [],
       text: "",
       bytes: 0,
-      residentCount: 0,
-      residentPaths: [],
       reads: 0,
       cacheHits: 0,
     };
@@ -519,37 +512,16 @@ export class MemoryLoader {
         bytes: cost,
       });
     }
-    // 深层标记 defaultopen 的记忆每轮只登记指针；上限与提醒由 limits.ts 判定。
-    const rootNotes = snapshot.sources
+    // 根层默认展开的记忆每轮注入全文；单篇过大时提醒，判定在 limits.ts。
+    const expanded = snapshot.sources
       .filter((source) => source.text)
-      .flatMap((source) => source.notes);
-    const plan = planResidents(
-      openResidents.map((note) => note.name),
-      rootNotes
-        .filter((note) => note.body !== undefined)
-        .map((note) => ({ name: note.name, bytes: bytes(note.body!) })),
+      .flatMap((source) => source.notes)
+      .filter((note) => note.body !== undefined);
+    snapshot.issues.push(
+      ...checkExpandedFull(
+        expanded.map((note) => ({ name: note.name, bytes: bytes(note.body!) })),
+      ),
     );
-    const residents = openResidents.slice(0, plan.take);
-    snapshot.residentCount = residents.length;
-    snapshot.residentPaths = residents.map((note) => note.path);
-    snapshot.issues.push(...plan.issues);
-    if (residents.length) {
-      const text = `# 常驻记忆\n\n以下记忆每轮提供，正文按路径按需读取。\n\n${residents
-        .map(renderNote)
-        .join("\n\n")}`;
-      const cost = bytes(text);
-      const separator = blocks.length ? 2 : 0;
-      if (used + separator + cost > maxContextBytes)
-        snapshot.issues.push(
-          `常驻记忆共 ${(cost / 1024).toFixed(1)} KiB，超过剩余默认上下文 ${
-            maxContextBytes / 1024
-          } KiB 预算，本轮未注入；请减少 defaultopen 条目或调整 memory.json 的 maxContextBytes。`,
-        );
-      else {
-        used += separator + cost;
-        blocks.push(text);
-      }
-    }
     for (const [path, cached] of this.cache) {
       if (!seen.has(path)) {
         this.cacheBytes -= cached.bytes;
